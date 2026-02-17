@@ -1,0 +1,1 @@
+This is a draft of the LCMM documentation, it includes a working server built on LCMM principles.

@@ -1,0 +1,14 @@
+# Логи
+logs/
+*.log
+
+# Clojure
+target/
+.classpath
+.project
+.settings/
+
+.cpcache/
+test-report-*.xml
+test-report-*.txt
+plan-*.md

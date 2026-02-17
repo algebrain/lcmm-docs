@@ -1,0 +1,17 @@
+{:paths ["src" "resources"]
+ :deps {org.clojure/clojure {:mvn/version "1.11.1"}
+        org.clojure/tools.logging {:mvn/version "1.3.0"}
+        ch.qos.logback/logback-classic {:mvn/version "1.5.12"}
+        ring/ring-core {:mvn/version "1.12.0"}
+        http-kit/http-kit {:mvn/version "2.8.0"}
+        metosin/malli {:mvn/version "0.17.0"}
+        com.github.algebrain/lcmm-event-bus {:git/url "https://github.com/algebrain/lcmm-event-bus"
+                                             :git/sha "ffcffc29feea92390ba0eec29bb51ffb9092e164"}
+        com.github.algebrain/lcmm-router {:git/url "https://github.com/algebrain/lcmm-router"
+                                          :git/sha "80233082df5bec60296fb3436da7030fa4462086"}}
+ :aliases {:run-main {:main-opts ["-m" "app.main"]}
+           :run-app {:main-opts ["-m" "app.main"]}
+           :test
+              {:extra-paths ["test"]
+              :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}}
+              :main-opts ["-m" "kaocha.runner"]}}}
