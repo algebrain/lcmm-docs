@@ -6,132 +6,124 @@
 
 **Сага** — это последовательность локальных транзакций, где каждая транзакция обновляет данные в рамках одного модуля и публикует событие, которое запускает следующую транзакцию. Если какой-либо шаг терпит неудачу, сага выполняет **компенсирующие транзакции**, которые отменяют результаты предыдущих успешных шагов.
 
-## 2. Архитектура Саги в Системе
+## 2. Сага — обычный модуль LCMM
 
-Наша реализация саг основана на четырех ключевых компонентах:
+В LCMM **сага — это такой же модуль, как и остальные**. На этом уровне нет отдельных сущностей вроде "менеджеров" или "движков" саг: есть модули, `event-bus`, `router` и `logger`.
 
-1.  **Определение Саги (Saga Definition):** Декларативная структура данных (карта Clojure), описывающая стейт-машину саги.
-2.  **Менеджер Саг (Saga Manager):** Сервис, который исполняет логику саги на основе ее определения, управляет ее жизненным циклом и отвечает за персистентность.
-3.  **Хранилище Состояний (State Store):** Таблица в базе данных для хранения состояния каждого активного экземпляра саги.
-4.  **Шина Событий (`event-bus`):** Весь обмен сообщениями между сагой и модулями системы происходит через `event-bus`.
+Ключевые свойства:
+*   Сага запускается **через событие** в `event-bus`, а не через прямой вызов другого компонента.
+*   Вся коммуникация с другими модулями **только через события**.
+*   Состояние саги хранится внутри модуля (в памяти или в БД, как его зависимость), и обновляется на события.
 
-## 3. Подробный Пример: Сага Создания Заказа
+## 3. Пример: Сага создания заказа как модуль
 
-Рассмотрим полный пример саги для обработки нового заказа.
+Ниже показан минимальный пример модуля-саги. Он:
+1.  принимает событие старта;
+2.  публикует команды шагов;
+3.  реагирует на ответы;
+4.  запускает компенсацию при ошибке.
 
-### 3.1. Бизнес-процесс
-Когда пользователь создает заказ, система должна выполнить два действия:
-1.  Списать заказанные товары со склада (модуль `inventory`).
-2.  Снять оплату с клиента (модуль `billing`).
-
-Оба шага должны завершиться успешно. Если оплата не проходит после того, как товар был списан, списание должно быть отменено (компенсировано), чтобы товар вернулся на склад.
-
-### 3.2. Определение Саги
-Сначала мы декларативно описываем всю логику в виде данных.
+### 3.1. Определение шагов
+Определение можно хранить как данные, это делает логику прозрачной.
 
 ```clojure
-;; в файле, например, order_processing/saga.clj
+;; order_processing/saga.clj
 
 (def saga-type :order-processing/create-order)
 
 (def definition
   {::steps
    [;; ШАГ 1: Работа со складом
-    {:name           :debit-stock
-     :command        :inventory/debit-stock  ; Что отправить
-     :on-success     :inventory/stock-debited  ; Чего ждать при успехе
-     :on-failure     :inventory/debit-failed   ; Чего ждать при неудаче
-     :compensation   :inventory/return-stock} ; Команда для отката этого шага
+    {:name         :debit-stock
+     :command      :inventory/debit-stock
+     :on-success   :inventory/stock-debited
+     :on-failure   :inventory/debit-failed
+     :compensation :inventory/return-stock}
 
     ;; ШАГ 2: Работа с биллингом
-    {:name           :charge-customer
-     :command        :billing/charge-customer
-     :on-success     :billing/customer-charged
-     :on-failure     :billing/charge-failed
-     :compensation   :billing/refund-customer}]})
+    {:name         :charge-customer
+     :command      :billing/charge-customer
+     :on-success   :billing/customer-charged
+     :on-failure   :billing/charge-failed
+     :compensation :billing/refund-customer}]})
 ```
 
-### 3.3. Запуск Саги (Модуль `orders`)
-Сага стартует в модуле `orders`, который, например, обрабатывает HTTP-запрос на создание заказа.
+### 3.2. Модуль саги
+
+```clojure
+;; order_processing/module.clj
+(ns order-processing.module
+  (:require [event-bus :as bus]))
+
+(defn- publish-command [bus step payload parent-envelope]
+  (bus/publish bus (:command step) payload {:parent-envelope parent-envelope}))
+
+(defn- publish-compensation [bus step payload parent-envelope]
+  (when-let [comp (:compensation step)]
+    (bus/publish bus comp payload {:parent-envelope parent-envelope})))
+
+(defn- handle-start
+  [bus logger definition envelope]
+  (let [payload (:payload envelope)
+        first-step (first (::steps definition))]
+    (logger :info {:component ::saga, :event :saga-started, :saga-type saga-type})
+    (publish-command bus first-step payload envelope)))
+
+(defn- handle-step-result
+  [bus logger definition envelope]
+  (let [event-type (:event-type envelope)
+        payload (:payload envelope)
+        steps (::steps definition)
+        idx (first (keep-indexed (fn [i s]
+                                   (when (or (= event-type (:on-success s))
+                                             (= event-type (:on-failure s)))
+                                     i))
+                                 steps))
+        step (nth steps idx)
+        success? (= event-type (:on-success step))]
+    (if success?
+      (if-let [next-step (nth steps (inc idx) nil)]
+        (do
+          (logger :info {:component ::saga, :event :step-succeeded, :step (:name step)})
+          (publish-command bus next-step payload envelope))
+        (logger :info {:component ::saga, :event :saga-completed, :saga-type saga-type}))
+      (do
+        (logger :warn {:component ::saga, :event :step-failed, :step (:name step)})
+        (publish-compensation bus step payload envelope)
+        (logger :info {:component ::saga, :event :saga-compensated, :saga-type saga-type})))))
+
+(defn init!
+  "Модуль саги. Подписывается на старт и ответы шагов."
+  [{:keys [bus logger]}]
+  ;; старт саги через событие
+  (bus/subscribe bus :order/create-requested
+                 (fn [bus envelope]
+                   (handle-start bus logger definition envelope)))
+
+  ;; ответы шагов
+  (doseq [step (::steps definition)
+          event-type [(:on-success step) (:on-failure step)]]
+    (bus/subscribe bus event-type
+                   (fn [bus envelope]
+                     (handle-step-result bus logger definition envelope))))))
+```
+
+### 3.3. Запуск саги через событие
+
+Модуль, принимающий HTTP-запрос, **не** вызывает сагу напрямую. Он публикует событие старта.
 
 ```clojure
 ;; в модуле orders
-
 (defn- handle-create-order
-  [saga-manager request]
+  [bus request]
   (let [order-data (:body request)]
-    ;; Запускаем сагу и немедленно отвечаем пользователю.
-    ;; Дальнейшая обработка заказа пойдет асинхронно.
-    (saga-manager/start-saga! saga-type order-data)
+    (bus/publish bus :order/create-requested order-data)
     {:status 202 :body {:message "Order processing started."}}))
 
-(defn init! [{:keys [router saga-manager]}]
-  (router/add-route! router :post "/orders" (partial handle-create-order saga-manager)))
+(defn init! [{:keys [router bus]}]
+  (router/add-route! router :post "/orders" (partial handle-create-order bus)))
 ```
-
-### 3.4. Участие в Саге (Модуль `inventory`)
-Модуль `inventory` выполняет свою часть работы, ничего не зная о саге в целом. Он просто реагирует на команды.
-
-```clojure
-;; в модуле inventory
-
-;; Обработчик команды на списание
-(defn- handle-debit-stock [bus envelope]
-  (let [{:keys [items saga-id]} (:payload envelope)] ; Извлекаем saga-id
-    (if (internal/try-debit-stock! items)
-      ;; Успех: публикуем ответ, сохранив saga-id
-      (bus/publish bus :inventory/stock-debited {:saga-id saga-id} {:parent-envelope envelope})
-      ;; Неудача: публикуем ответ, сохранив saga-id
-      (bus/publish bus :inventory/debit-failed {:saga-id saga-id, :reason "Not enough stock"} {:parent-envelope envelope}))))
-
-;; Обработчик компенсирующей команды
-(defn- handle-return-stock [bus envelope]
-    (let [{:keys [items saga-id]} (:payload envelope)]
-      (internal/return-stock! items)
-      ;; Компенсирующие действия обычно не требуют ответа
-      (println "COMPENSATION: Stock returned for saga" saga-id)))
-
-(defn init! [{:keys [bus]}]
-  ;; Подписываемся на команды от саги (или любого другого источника)
-  (bus/subscribe bus :inventory/debit-stock handle-debit-stock)
-  (bus/subscribe bus :inventory/return-stock handle-return-stock))
-```
-
-### 3.5. Участие в Саге (Модуль `billing`)
-Модуль `billing` работает аналогично `inventory`.
-
-```clojure
-;; в модуле billing
-
-(defn- handle-charge-customer [bus envelope]
-  (let [{:keys [customer-id amount saga-id]} (:payload envelope)]
-    (if (internal/try-charge! customer-id amount)
-      (bus/publish bus :billing/customer-charged {:saga-id saga-id} {:parent-envelope envelope})
-      (bus/publish bus :billing/charge-failed {:saga-id saga-id, :reason "Payment declined"} {:parent-envelope envelope}))))
-
-(defn init! [{:keys [bus]}]
-  (bus/subscribe bus :billing/charge-customer handle-charge-customer))
-```
-
-### 3.6. Что делает Менеджер Саг "за кадром"
-*   **Счастливый путь**:
-    1.  Получает ответ `:inventory/stock-debited`.
-    2.  Находит сагу по `saga-id`.
-    3.  Видит, что шаг `:debit-stock` успешен.
-    4.  Смотрит в определение и видит, что следующий шаг — `:charge-customer`.
-    5.  Публикует команду `:billing/charge-customer`.
-    6.  Получает ответ `:billing/customer-charged`, видит, что это последний шаг, и помечает сагу как `:completed`.
-*   **Путь с компенсацией**:
-    1.  Получает ответ `:inventory/stock-debited`.
-    2.  Публикует команду `:billing/charge-customer`.
-    3.  Получает ответ **`:billing/charge-failed`**.
-    4.  Находит сагу по `saga-id`, видит, что шаг `:charge-customer` провалился.
-    5.  Начинает откат: смотрит на все *успешно выполненные* шаги (в нашем случае это `:debit-stock`).
-    6.  Находит у шага `:debit-stock` ключ `:compensation` и публикует команду **`:inventory/return-stock`**.
-    7.  Помечает сагу как `:compensated`.
 
 ## 4. Восстановление после сбоев
 
-Благодаря хранению состояния в БД, система устойчива к перезапускам. При старте приложения Менеджер Саг:
-1.  Находит в таблице `saga_instances` все саги, которые не были завершены (`:running` или `:awaiting-response`).
-2.  Для каждой такой саги он возобновляет логику ожидания (например, заново подписывается на `on-success`/`on-failure` события текущего шага). Ему не нужно заново отправлять команду, так как паттерн Outbox уже гарантировал ее отправку до сбоя.
+Состояние саги хранится в модуле (например, в БД). При рестарте модуль считывает незавершенные экземпляры и продолжает обработку, ожидая события `on-success`/`on-failure` текущего шага. Повторная отправка команд не нужна, если доставка команд уже гарантирована (например, через outbox).

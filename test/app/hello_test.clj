@@ -76,7 +76,7 @@
       (is (= "TestUser" @hello/current-name))
       
       ;; Теперь вручную вызываем обработчик с другим именем
-      (hello/handle-name-changed bus @event-published logger)
+      (hello/handle-name-changed bus logger @event-published)
       
       ;; Проверяем что атом обновился снова (теперь "TestUser" из envelope)
       (is (= "TestUser" @hello/current-name)))))

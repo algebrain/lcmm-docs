@@ -13,15 +13,12 @@
    Интегрируется с clojure.tools.logging для production использования."
   []
   (fn [level data]
-    ;; Гарантируем что data — карта с обязательными полями
-    (let [log-data (merge {:timestamp (java.util.Date.)}
-                          (when (map? data) data)
-                          (when-not (map? data) {:message data}))]
+    (let [log-data (if (map? data) data {:message data})]
       (case level
         :info  (log/info log-data)
         :warn  (log/warn log-data)
         :error (log/error log-data)
-        :debug (log/debug log-data)  ; Включено для отладки
+        :debug (log/debug log-data)
         :trace (log/trace log-data)
         (log/info log-data)))))
 
@@ -32,9 +29,7 @@
     (fn [request]
       (try
         (logger :info {:component ::main, :event :http-request, :method (:request-method request), :uri (:uri request)})
-        (let [response (handler request)]
-          (logger :info {:component ::main, :event :http-response, :status (:status response)})
-          response)
+        (handler request)
         (catch Exception e
           (logger :error {:component ::main, :event :http-error, :exception e, :uri (:uri request)})
           {:status 500
@@ -43,10 +38,7 @@
 
 (defn -main [& args]
   (let [logger (make-app-logger)
-        bus    (bus/make-bus {:logger logger
-                              :mode :buffered    ; production режим с буфером
-                              :buffer-size 1024
-                              :concurrency 4})
+        bus    (bus/make-bus {:logger logger})
         router (router/make-router)
         deps   {:bus bus :router router :logger logger}]
 
@@ -60,7 +52,7 @@
     ;; wrap-params применяется ПОВЕРХ роутера — это правильный уровень для парсинга параметров
     (let [global-middleware (make-global-middleware logger)
           router-handler (router/as-ring-handler router {:middleware [global-middleware]})
-          app-handler (wrap-params router-handler)  ; ← парсинг query-params и form-params
+          app-handler (wrap-params router-handler)
           port    3005
           server  (http-kit/run-server app-handler {:port port})]
 
