@@ -1,7 +1,6 @@
 # Документация по API: Router
 
 Этот документ описывает публичный API для компонента `Router`. Роутер служит центральной точкой для регистрации HTTP-маршрутов всеми модулями системы, реализуя принцип инверсии управления (IoC).
-Имплементация доступна в [GitHub-репозитории](https://github.com/algebrain/lcmm-router).
 
 ## Конструктор
 
@@ -30,6 +29,17 @@
 - **`opts`:** (опционально) Карта с дополнительными опциями `reitit`, такими как:
   - `:name`: Имя маршрута (keyword) для его идентификации.
   - `:middleware`: Вектор Ring-middleware, применяемого только к этому маршруту.
+  - `:replace?`: Явно разрешает перезапись существующего маршрута с тем же `path + method`.
+
+#### Правила безопасности для `add-route!`
+
+- По умолчанию действует режим **fail-closed**: если `path + method` уже зарегистрированы, `add-route!` выбрасывает `ExceptionInfo`.
+- Явная перезапись разрешена только при `:replace? true` в `opts`.
+- Базовый контракт API валидируется в роутере:
+  - `method` должен быть keyword;
+  - `path` должен быть string;
+  - `handler` должен быть invokable (`ifn?`);
+  - `opts` должен быть map.
 
 **Пример от модуля `users`:**
 ```clojure
@@ -58,6 +68,7 @@
 - **Сигнатура:** `(as-ring-handler router & [opts])`
 - **`router`:** Экземпляр роутера со всеми зарегистрированными маршрутами.
 - **`opts`:** (опционально) Карта с глобальными опциями `reitit`, которые будут применены ко всем маршрутам. Чаще всего используется для добавления глобального `middleware`.
+- После первого вызова `as-ring-handler` экземпляр `router` становится immutable: дальнейшие вызовы `add-route!` завершаются `ExceptionInfo`.
 
 **Важная особенность:** Возвращаемый обработчик содержит в своих метаданных скомпилированный `reitit`-роутер под ключом `::router/router`. Это полезно для тестирования и интроспекции.
 
@@ -92,10 +103,10 @@
 (deftest find-by-name-test
   (let [rtr (router/make-router)]
     (router/add-route! rtr :get "/test" (constantly {:status 200}) {:name ::my-test-route})
-
+    
     (let [handler (router/as-ring-handler rtr)
           ;; Извлекаем роутер из метаданных
-          compiled-router (::router/router (meta handler))]
-
+          compiled-router (::router/router (meta handler))] 
+      
       (is (some? (reitit/match-by-name compiled-router ::my-test-route))))))
 ```

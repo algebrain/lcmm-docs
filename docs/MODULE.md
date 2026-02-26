@@ -29,11 +29,11 @@
 (defn- handle-get-resource [bus logger req]
   (logger :info {:component ::my-module, :event :get-resource-request, :path (:uri req)})
   ;; ...логика получения ресурса...
-  (bus/publish bus :my-module/resource-accessed {:resource-id "abc"}) ; Пример публикации события
+  (bus/publish bus :my-module/resource-accessed {:resource-id "abc"} {:module ::my-module}) ; Пример публикации события
   {:status 200 :body "Resource data"})
 
 ;; Внутренние функции-обработчики событий шины
-(defn- handle-resource-updated [logger envelope]
+(defn- handle-resource-updated [bus logger envelope]
   (logger :info {:component ::my-module, :event :resource-updated-event, :payload (:payload envelope)})
   ;; ...логика реакции на обновление ресурса...
   )
@@ -52,7 +52,8 @@
   ;; 2. Подписка на события шины
   (bus/subscribe bus
                  :some-other-module/resource-updated
-                 (partial handle-resource-updated logger))
+                 (fn [bus envelope]
+                   (handle-resource-updated bus logger envelope)))
 
   (logger :info {:component ::my-module, :event :module-initialized}))
 ```
@@ -70,7 +71,7 @@
 
 *   **Использование `bus/subscribe`**: Для подписки на события, как показано в примере выше.
 *   **Изолированность обработчиков**: Обработчики событий должны быть изолированными функциями, выполняющими свою специфическую задачу в ответ на событие.
-*   **Поддержание причинности (`Causation`)**: Если ваш обработчик событий публикует новые события, всегда передавайте `:parent-envelope` из входящего конверта, чтобы `event-bus` мог отслеживать цепочку причинно-следственных связей.
+*   **Поддержание причинности (`Causation`)**: Если ваш обработчик событий публикует новые события, всегда передавайте `:parent-envelope` из входящего конверта и `:module`, чтобы `event-bus` мог отслеживать цепочку причинно-следственных связей.
 
 ## 4. Логирование
 
@@ -96,7 +97,7 @@
 
 ## 6. Конфигурирование модулей
 
-Для конфигурирования модулей используйте библиотеку [`lcmm-configurator`](https://github.com/algebrain/lcmm-configurator). Правила и примеры описаны в [`./CONFIGURATOR.md`](./CONFIGURATOR.md). Модуль не должен самостоятельно реализовывать логику сборки конфига.
+Для конфигурирования модулей используйте библиотеку [`lcmm-configure`](https://github.com/algebrain/lcmm-configure). Правила и примеры описаны в [`./CONFIGURE.md`](./CONFIGURE.md) и [`./CONFIGURE_ADMIN.md`](./CONFIGURE_ADMIN.md). Модуль не должен самостоятельно реализовывать логику сборки конфига.
 
 Цель — максимально простой опыт для администраторов: один понятный порядок, минимум "магии".
 

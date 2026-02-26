@@ -30,6 +30,7 @@
 ;; order_processing/saga.clj
 
 (def saga-type :order-processing/create-order)
+(def saga-module :order-processing)
 
 (def definition
   {::steps
@@ -56,11 +57,13 @@
   (:require [event-bus :as bus]))
 
 (defn- publish-command [bus step payload parent-envelope]
-  (bus/publish bus (:command step) payload {:parent-envelope parent-envelope}))
+  (bus/publish bus (:command step) payload {:parent-envelope parent-envelope
+                                            :module saga-module}))
 
 (defn- publish-compensation [bus step payload parent-envelope]
   (when-let [comp (:compensation step)]
-    (bus/publish bus comp payload {:parent-envelope parent-envelope})))
+    (bus/publish bus comp payload {:parent-envelope parent-envelope
+                                   :module saga-module})))
 
 (defn- handle-start
   [bus logger definition envelope]
@@ -117,7 +120,7 @@
 (defn- handle-create-order
   [bus request]
   (let [order-data (:body request)]
-    (bus/publish bus :order/create-requested order-data)
+    (bus/publish bus :order/create-requested order-data {:module :orders})
     {:status 202 :body {:message "Order processing started."}}))
 
 (defn init! [{:keys [router bus]}]
