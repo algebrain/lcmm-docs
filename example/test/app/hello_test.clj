@@ -1,5 +1,5 @@
 (ns app.hello-test
-  (:require [clojure.test :refer :all]
+  (:require [clojure.test :refer [deftest is testing]]
             [event-bus :as bus]
             [lcmm.router :as router]
             [app.hello :as hello]))
@@ -8,7 +8,10 @@
   "Создаёт тестовые зависимости."
   []
   (let [logger (fn [_level _data] nil)  ; silent logger
-        bus (bus/make-bus {:logger logger})
+        schema-registry {:name/changed {"1.0" [:map [:name :string]]}
+                         :name/audit {"1.0" [:map [:action :string] [:name :string]]}
+                         :hello/greeting-updated {"1.0" [:map [:greeting :string]]}}
+        bus (bus/make-bus {:logger logger :schema-registry schema-registry})
         router (router/make-router)]
     {:bus bus :router router :logger logger}))
 
@@ -39,16 +42,16 @@
 (deftest handle-get-hello-test
   (testing "handle-get-hello возвращает приветствие с текущим именем"
     (reset-hello-state)
-    (let [{:keys [bus router logger]} (make-test-deps)
+    (let [{:keys [logger]} (make-test-deps)
           handler (partial hello/handle-get-hello logger)]
-      
+
       ;; Тест с именем по умолчанию
       (reset! hello/current-name "World")
       (let [request (make-request :get "/hello")
             response (call-handler handler request)]
         (is (= 200 (:status response)))
         (is (= "Hello World" (:body response))))
-      
+
       ;; Тест с изменённым именем
       (reset! hello/current-name "Alice")
       (let [request (make-request :get "/hello")
@@ -66,18 +69,18 @@
                            (fn [_bus envelope]
                              (reset! event-published envelope)))
           _ (hello/init! {:bus bus :router router :logger logger})
-          _ (bus/publish bus :name/changed {:name "TestUser"})]
-      
+          _ (bus/publish bus :name/changed {:name "TestUser"} {:module :test})]
+
       ;; Ждём асинхронную обработку
       (Thread/sleep 200)
-      
+
       ;; Проверяем что событие было получено и атом обновился через подписку в init!
       (is (some? @event-published))
       (is (= "TestUser" @hello/current-name))
-      
+
       ;; Теперь вручную вызываем обработчик с другим именем
       (hello/handle-name-changed bus logger @event-published)
-      
+
       ;; Проверяем что атом обновился снова (теперь "TestUser" из envelope)
       (is (= "TestUser" @hello/current-name)))))
 
@@ -96,11 +99,11 @@
           _ (bus/subscribe bus :name/changed
                            (fn [_bus envelope]
                              (reset! event-published envelope)))
-          _ (bus/publish bus :name/changed {:name "EventTest"})]
-      
+          _ (bus/publish bus :name/changed {:name "EventTest"} {:module :test})]
+
       ;; Ждём асинхронную обработку :name/changed
       (Thread/sleep 200)
-      
+
       ;; Событие должно быть опубликовано через подписку в init!
       (is (= 1 (count @published-events)))
       (is (= {:greeting "Hello EventTest"} (first @published-events))))))
@@ -109,24 +112,24 @@
   (testing "Интеграционный тест: событие → обновление атома → GET /hello"
     (reset-hello-state)
     (let [{:keys [bus router logger]} (make-test-deps)
-          
+
           ;; Инициализируем модуль
           _ (hello/init! {:bus bus :router router :logger logger})
-          
+
           ;; Публикуем событие :name/changed (как это делает name модуль)
-          _ (bus/publish bus :name/changed {:name "IntegrationUser"})
-          
+          _ (bus/publish bus :name/changed {:name "IntegrationUser"} {:module :test})
+
           ;; Ждём асинхронную обработку
           _ (Thread/sleep 200)
-          
+
           ;; Создаём handler для /hello
           handler (partial hello/handle-get-hello logger)
           request (make-request :get "/hello")
           response (call-handler handler request)]
-      
+
       ;; Проверяем что имя обновилось через событие
       (is (= "IntegrationUser" @hello/current-name))
-      
+
       ;; Проверяем response
       (is (= 200 (:status response)))
       (is (= "Hello IntegrationUser" (:body response))))))

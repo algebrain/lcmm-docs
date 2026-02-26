@@ -1,1 +1,0 @@
-clj -M:run-main

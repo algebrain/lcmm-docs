@@ -13,11 +13,11 @@
     (bus/publish bus
                  :hello/greeting-updated
                  {:greeting (str "Hello " new-name)}
-                 {:parent-envelope envelope})))
+                 {:parent-envelope envelope :module ::hello})))
 
 (defn handle-get-hello
   "HTTP handler to return the greeting."
-  [logger request]
+  [logger _request]
   (logger :info {:component ::hello, :event :get-hello, :current-name @current-name})
   {:status 200
    :headers {"Content-Type" "text/plain; charset=utf-8"}

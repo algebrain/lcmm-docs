@@ -1,7 +1,6 @@
 (ns app.name
   (:require [lcmm.router :as router]
-            [event-bus :as bus]
-            [malli.core :as m]))
+            [event-bus :as bus]))
 
 ;; Схема для валидации payload события :name/changed
 (def NameChangedSchema
@@ -15,7 +14,7 @@
   (let [query-params (:query-params request)
         name-val (get query-params "value" "World")]
     (logger :info {:component ::name, :event :name-set, :value name-val})
-    (bus/publish bus :name/changed {:name name-val})
+    (bus/publish bus :name/changed {:name name-val} {:module ::name})
     {:status 200
      :headers {"Content-Type" "text/plain"}
      :body (str "Name set to: " name-val)}))
@@ -32,7 +31,7 @@
                    (bus/publish bus
                                 :name/audit
                                 {:action "name-changed" :name (get-in envelope [:payload :name])}
-                                {:parent-envelope envelope}))
+                                {:parent-envelope envelope :module ::name}))
                  {:schema NameChangedSchema
                   :meta ::name-changed-handler})
 

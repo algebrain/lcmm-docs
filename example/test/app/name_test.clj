@@ -1,5 +1,5 @@
 (ns app.name-test
-  (:require [clojure.test :refer :all]
+  (:require [clojure.test :refer [deftest is testing]]
             [event-bus :as bus]
             [lcmm.router :as router]
             [ring.middleware.params :refer [wrap-params]]
@@ -9,7 +9,10 @@
   "Создаёт тестовые зависимости."
   []
   (let [logger (fn [_level _data] nil)  ; silent logger
-        bus (bus/make-bus {:logger logger})
+        schema-registry {:name/changed {"1.0" [:map [:name :string]]}
+                         :name/audit {"1.0" [:map [:action :string] [:name :string]]}
+                         :hello/greeting-updated {"1.0" [:map [:greeting :string]]}}
+        bus (bus/make-bus {:logger logger :schema-registry schema-registry})
         router (router/make-router)]
     {:bus bus :router router :logger logger}))
 
@@ -41,13 +44,13 @@
           _ (name/init! {:bus bus :router router :logger logger})
           ;; Создаём handler напрямую для тестирования
           handler (partial name/handle-set-name bus logger)]
-      
+
       ;; Тест с параметром
       (let [request (make-request :get "/name" {"value" "Alice"})
             response (call-handler handler request)]
         (is (= 200 (:status response)))
         (is (= "Name set to: Alice" (:body response))))
-      
+
       ;; Тест без параметра (default "World")
       (let [request (make-request :get "/name" {})
             response (call-handler handler request)]
@@ -65,7 +68,7 @@
           handler (partial name/handle-set-name bus logger)
           request (make-request :get "/name" {"value" "TestName"})
           _ (call-handler handler request)]
-      
+
       (Thread/sleep 100)  ; ждём асинхронную обработку
       (is (= 1 (count @published-events)))
       (is (= {:name "TestName"} (first @published-events))))))
@@ -75,31 +78,31 @@
     (let [{:keys [bus router logger]} (make-test-deps)
           name-changed-received (atom false)
           current-name (atom nil)
-          
+
           ;; Подписываемся на событие (как hello модуль)
           _ (bus/subscribe bus :name/changed
                            (fn [_bus envelope]
                              (reset! name-changed-received true)
                              (reset! current-name (get-in envelope [:payload :name]))))
-          
+
           ;; Инициализируем модуль
           _ (name/init! {:bus bus :router router :logger logger})
-          
+
           ;; Создаём полный handler с роутером и wrap-params
           router-handler (router/as-ring-handler router)
           app-handler (wrap-params router-handler)
-          
+
           ;; Выполняем запрос
           request (make-request :get "/name" {"value" "IntegrationTest"})
           response (call-handler app-handler request)]
-      
+
       ;; Ждём асинхронную обработку событий
       (Thread/sleep 200)
-      
+
       ;; Проверяем response
       (is (= 200 (:status response)))
       (is (= "Name set to: IntegrationTest" (:body response)))
-      
+
       ;; Проверяем что событие было получено
       (is (true? @name-changed-received))
       (is (= "IntegrationTest" @current-name)))))

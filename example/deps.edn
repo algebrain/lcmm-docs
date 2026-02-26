@@ -1,4 +1,7 @@
-{:paths ["src" "resources"]
+{:mvn/local-repo ".m2-local"
+ :mvn/repos {"central" {:url "https://repo1.maven.org/maven2/"}
+             "clojars" {:url "https://repo.clojars.org/"}}
+ :paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.11.1"}
         org.clojure/tools.logging {:mvn/version "1.3.0"}
         ch.qos.logback/logback-classic {:mvn/version "1.5.12"}
@@ -6,12 +9,17 @@
         http-kit/http-kit {:mvn/version "2.8.0"}
         metosin/malli {:mvn/version "0.17.0"}
         com.github.algebrain/lcmm-event-bus {:git/url "https://github.com/algebrain/lcmm-event-bus"
-                                             :git/sha "ffcffc29feea92390ba0eec29bb51ffb9092e164"}
+                                             :git/sha "9472d5b9e70e5a77322d68fe0af18e386e4cd866"}
         com.github.algebrain/lcmm-router {:git/url "https://github.com/algebrain/lcmm-router"
-                                          :git/sha "80233082df5bec60296fb3436da7030fa4462086"}}
+                                          :git/sha "878b77c35e4d884865115b09ade81ae2050b19a3"}}
  :aliases {:run-main {:main-opts ["-m" "app.main"]}
            :run-app {:main-opts ["-m" "app.main"]}
-           :test
-              {:extra-paths ["test"]
-              :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}}
-              :main-opts ["-m" "kaocha.runner"]}}}
+           :test {:extra-paths ["test"]
+                  :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}}
+                  :main-opts ["-m" "kaocha.runner"]}
+           :lint {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2026.01.19"}}
+                  :main-opts ["-m" "clj-kondo.main" "--cache-dir" ".clj-kondo-cache" "--lint" "src" "test"]}
+           :format {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.15.6"}}
+                    :main-opts ["-m" "cljfmt.main" "fix" "src" "test"]}
+           :bench-perf {:extra-paths ["bench"]
+                        :extra-deps {criterium/criterium {:mvn/version "0.4.6"}}}}}

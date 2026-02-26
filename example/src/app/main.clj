@@ -36,9 +36,12 @@
            :headers {"Content-Type" "text/plain"}
            :body "Internal server error"})))))
 
-(defn -main [& args]
+(defn -main [& _args]
   (let [logger (make-app-logger)
-        bus    (bus/make-bus {:logger logger})
+        schema-registry {:name/changed {"1.0" [:map [:name :string]]}
+                         :name/audit {"1.0" [:map [:action :string] [:name :string]]}
+                         :hello/greeting-updated {"1.0" [:map [:greeting :string]]}}
+        bus    (bus/make-bus {:logger logger :schema-registry schema-registry})
         router (router/make-router)
         deps   {:bus bus :router router :logger logger}]
 
@@ -64,6 +67,7 @@
                         (Thread.
                          #(do
                             (logger :info {:component ::main, :event :shutdown-started})
-                            (.close ^java.io.Closeable bus)  ; закрытие event-bus
+                            (when (instance? java.io.Closeable bus)
+                              (.close ^java.io.Closeable bus))  ; закрытие event-bus, если поддерживается
                             (server)                         ; остановка http-kit сервера
                             (logger :info {:component ::main, :event :shutdown-complete})))))))
