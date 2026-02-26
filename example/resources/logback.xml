@@ -1,12 +1,10 @@
 <configuration>
-    <!-- Console appender -->
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
             <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
 
-    <!-- File appender -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>logs/app.log</file>
         <encoder>
@@ -18,8 +16,7 @@
         </rollingPolicy>
     </appender>
 
-    <!-- Включаем DEBUG уровень для app2 -->
-    <logger name="app2" level="DEBUG"/>
+    <logger name="app" level="DEBUG"/>
 
     <root level="INFO">
         <appender-ref ref="STDOUT"/>

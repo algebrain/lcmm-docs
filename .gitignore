@@ -19,3 +19,4 @@ plan-*.md
 .plans
 *.local
 *.local.*
+data

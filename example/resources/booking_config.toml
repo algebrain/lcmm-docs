@@ -1,0 +1,8 @@
+[app]
+name = "example2-booking"
+
+[http]
+port = 3006
+
+[db]
+path = "./data/example2.db"

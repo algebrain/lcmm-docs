@@ -4,8 +4,8 @@
             [clojure.string :as str])
   (:import [java.util.concurrent TimeUnit]))
 
-(def green "[1;32m")
-(def reset "[0m")
+(def green "\u001b[1;32m")
+(def reset "\u001b[0m")
 
 (defn started-at []
   (let [t (java.time.LocalTime/now)

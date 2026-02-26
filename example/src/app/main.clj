@@ -1,17 +1,18 @@
 (ns app.main
-  (:require [event-bus :as bus]
+  (:require [app.audit :as audit]
+            [app.booking :as booking]
+            [app.notify :as notify]
+            [app.sqlite :as sqlite]
+            [clojure.string :as str]
+            [clojure.tools.logging :as log]
+            [configure.core :as cfg]
+            [event-bus :as bus]
             [lcmm.router :as router]
             [org.httpkit.server :as http-kit]
-            [clojure.tools.logging :as log]
-            [ring.middleware.params :refer [wrap-params]]
-            [app.name :as name]
-            [app.hello :as hello])
+            [ring.middleware.params :refer [wrap-params]])
   (:gen-class))
 
-(defn make-app-logger
-  "Создаёт структурированный логгер по LOGGING.md.
-   Интегрируется с clojure.tools.logging для production использования."
-  []
+(defn make-app-logger []
   (fn [level data]
     (let [log-data (if (map? data) data {:message data})]
       (case level
@@ -22,52 +23,95 @@
         :trace (log/trace log-data)
         (log/info log-data)))))
 
-(defn- make-global-middleware
-  "Создаёт глобальный middleware для обработки ошибок и логирования HTTP-запросов."
-  [logger]
+(defn- nested-config-value [m keys]
+  (reduce (fn [acc part]
+            (when (map? acc)
+              (or (get acc part)
+                  (get acc (keyword part)))))
+          m
+          keys))
+
+(defn- config-value [config dot-key default]
+  (let [parts (str/split dot-key #"\.")]
+    (or (get config dot-key)
+        (get config (keyword dot-key))
+        (nested-config-value config parts)
+        default)))
+
+(defn- ensure-parent-dir! [path]
+  (let [f (java.io.File. path)
+        parent (.getParentFile f)]
+    (when (some? parent)
+      (.mkdirs parent))))
+
+(defn- load-app-config [logger]
+  (let [{:keys [config meta]} (cfg/load-config {:module-name "booking"
+                                                :config "./resources/booking_config.toml"
+                                                :allow-relative? true
+                                                :env-only? false
+                                                :allowed-keys #{"http.port" "db.path" "app.name"}
+                                                :required #{"http.port" "db.path"}
+                                                :types {"http.port" :int}
+                                                :logger logger})]
+    (logger :info {:component ::main
+                   :event :config-loaded
+                   :source (:source meta)
+                   :file (:file meta)
+                   :env-keys (:env-keys meta)})
+    config))
+
+(defn- make-global-middleware [logger]
   (fn [handler]
     (fn [request]
       (try
-        (logger :info {:component ::main, :event :http-request, :method (:request-method request), :uri (:uri request)})
+        (logger :info {:component ::main
+                       :event :http-request
+                       :method (:request-method request)
+                       :uri (:uri request)})
         (handler request)
         (catch Exception e
-          (logger :error {:component ::main, :event :http-error, :exception e, :uri (:uri request)})
+          (logger :error {:component ::main
+                          :event :http-error
+                          :exception e
+                          :uri (:uri request)})
           {:status 500
-           :headers {"Content-Type" "text/plain"}
+           :headers {"Content-Type" "text/plain; charset=utf-8"}
            :body "Internal server error"})))))
 
 (defn -main [& _args]
   (let [logger (make-app-logger)
-        schema-registry {:name/changed {"1.0" [:map [:name :string]]}
-                         :name/audit {"1.0" [:map [:action :string] [:name :string]]}
-                         :hello/greeting-updated {"1.0" [:map [:greeting :string]]}}
-        bus    (bus/make-bus {:logger logger :schema-registry schema-registry})
-        router (router/make-router)
-        deps   {:bus bus :router router :logger logger}]
+        config (load-app-config logger)
+        port (long (config-value config "http.port" 3006))
+        db-path (str (config-value config "db.path" "./data/example2.db"))
+        _ (ensure-parent-dir! db-path)
+        schema-registry {:booking/create-requested {"1.0" [:map [:slot :string] [:name :string]]}
+                         :booking/created {"1.0" [:map [:booking-id :string] [:slot :string] [:name :string]]}
+                         :booking/rejected {"1.0" [:map [:slot :string] [:name :string] [:reason :string]]}
+                         :notify/booking-created {"1.0" [:map [:booking-id :string] [:message :string]]}}
+        event-bus (bus/make-bus {:logger logger :schema-registry schema-registry})
+        app-router (router/make-router)
+        db (sqlite/make-store db-path)
+        _ (sqlite/init-schema! db)
+        deps {:bus event-bus :router app-router :logger logger :db db :config config}]
 
-    (logger :info {:component ::main, :event :initializing-modules})
+    (logger :info {:component ::main :event :initializing-modules})
+    (booking/init! deps)
+    (notify/init! deps)
+    (audit/init! deps)
 
-    ;; Инициализация модулей
-    (name/init! deps)
-    (hello/init! deps)
-
-    ;; Компиляция роутера с глобальным middleware
-    ;; wrap-params применяется ПОВЕРХ роутера — это правильный уровень для парсинга параметров
     (let [global-middleware (make-global-middleware logger)
-          router-handler (router/as-ring-handler router {:middleware [global-middleware]})
+          router-handler (router/as-ring-handler app-router {:middleware [global-middleware]})
           app-handler (wrap-params router-handler)
-          port    3005
-          server  (http-kit/run-server app-handler {:port port})]
-
-      (logger :info {:component ::main, :event :server-started, :port port})
+          server (http-kit/run-server app-handler {:port port})]
+      (logger :info {:component ::main :event :server-started :port port :db-path db-path})
       (println (str "Server running on http://localhost:" port))
 
-      ;; Регистрация shutdown hook для корректного завершения
       (.addShutdownHook (Runtime/getRuntime)
                         (Thread.
                          #(do
-                            (logger :info {:component ::main, :event :shutdown-started})
-                            (when (instance? java.io.Closeable bus)
-                              (.close ^java.io.Closeable bus))  ; закрытие event-bus, если поддерживается
-                            (server)                         ; остановка http-kit сервера
-                            (logger :info {:component ::main, :event :shutdown-complete})))))))
+                            (logger :info {:component ::main :event :shutdown-started})
+                            (when (instance? java.io.Closeable event-bus)
+                              (.close ^java.io.Closeable event-bus))
+                            (sqlite/close-store! db)
+                            (server)
+                            (logger :info {:component ::main :event :shutdown-complete})))))))

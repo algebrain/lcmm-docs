@@ -4,7 +4,7 @@ This repository contains a draft of the LCMM documentation and a runnable sample
 
 **What is here**
 - Library documentation in `docs/`
-- A working sample application in `example/`
+- A booking server sample in `example/` (GET-first demo for browser-based manual checks)
 
 **Docs index**
 - [Architecture](docs/ARCH.md)
@@ -18,16 +18,24 @@ This repository contains a draft of the LCMM documentation and a runnable sample
 - [Configure (Developer)](docs/CONFIGURE.md)
 - [Configure (Admin)](docs/CONFIGURE_ADMIN.md)
 
-**Sample app**
+**Booking server sample (`example/`)**
+
 Location: `example/`
 
-Run the app:
+`example` demonstrates a small LCMM-style booking service with:
+- module boundaries (`booking`, `notify`, `audit`);
+- asynchronous cross-module communication through `event-bus`;
+- SQLite persistence for bookings, notifications, and audit trail;
+- TOML-based configuration through `lcmm-configure`;
+- GET-only endpoints for easy manual checks in browser address bar.
+
+Run the booking server:
 ```bash
 cd example
 clj -M:run-main
 ```
 
-Run the sample tests, lint, and formatting:
+Run tests, lint, and formatting for booking sample:
 ```bash
 cd example
 bb test.bb
@@ -36,3 +44,7 @@ bb test.bb
 Notes
 - The sample uses the current `event-bus` and `router` APIs described in the docs.
 - The sample test runner includes linting and formatting steps; see `example/test.bb` for details.
+
+Internal docs for `example`:
+- [example/README.md](example/README.md)
+- [example/ENDPOINTS_RU.md](example/ENDPOINTS_RU.md)
