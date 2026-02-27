@@ -14,6 +14,7 @@ This repository contains a draft of the LCMM documentation and a runnable sample
 - [Modules](docs/MODULE.md)
 - [Database Abstraction](docs/DATABASE.md)
 - [Contract Specification](docs/CONTRACT.md)
+- [Hydration Protocol](docs/HYDRATION.md)
 - [Sagas](docs/SAGA.md)
 - [Transact](docs/TRANSACT.md)
 - [Configure (Developer)](docs/CONFIGURE.md)
