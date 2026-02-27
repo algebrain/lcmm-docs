@@ -1,0 +1,94 @@
+contract_version: "1.0"
+module:
+  name: "audit"
+  owner: "example"
+  summary: "Реактивный модуль аудита событий"
+
+http:
+  operations:
+    - operation_id: "list_audit"
+      method: "GET"
+      path: "/audit/list"
+      summary: "Список записей аудита"
+      x-idempotent: true
+      x-idempotency-key: "method + ':' + path"
+      x-transactional: "none"
+      request:
+        query: {type: object}
+      responses:
+        "200": {description: "Список аудита"}
+
+events:
+  subscribes:
+    - event: "booking/create-requested"
+      summary: "Записать в аудит запрос создания брони"
+      x-idempotent: false
+      x-transactional: "none"
+      x-consumes: ["booking/create-requested"]
+      payload:
+        type: object
+        required: [slot, name]
+        properties:
+          slot: {type: string}
+          name: {type: string}
+
+    - event: "booking/created"
+      summary: "Записать в аудит успешное создание"
+      x-idempotent: false
+      x-transactional: "none"
+      x-consumes: ["booking/created"]
+      payload:
+        type: object
+        required: [booking_id, slot, name]
+        properties:
+          booking_id: {type: string, format: uuid}
+          slot: {type: string}
+          name: {type: string}
+
+    - event: "booking/rejected"
+      summary: "Записать в аудит отказ создания"
+      x-idempotent: false
+      x-transactional: "none"
+      x-consumes: ["booking/rejected"]
+      payload:
+        type: object
+        required: [slot, name, reason]
+        properties:
+          slot: {type: string}
+          name: {type: string}
+          reason: {type: string}
+
+    - event: "notify/booking-created"
+      summary: "Записать в аудит событие уведомления"
+      x-idempotent: false
+      x-transactional: "none"
+      x-consumes: ["notify/booking-created"]
+      payload:
+        type: object
+        required: [booking_id, message]
+        properties:
+          booking_id: {type: string, format: uuid}
+          message: {type: string}
+
+types:
+  schemas:
+    audit_event_type: {type: string}
+
+behavior:
+  defaults:
+    x-timeout-ms: 1000
+    x-failure-mode: "fail-fast"
+
+narrative:
+  purpose: "Собирает аудит по ключевым событиям бронирования и уведомлений"
+  scenarios:
+    - "Подписка на события booking/* и notify/booking-created"
+    - "Формирование audit-записи с payload, correlation-id и causation-path"
+    - "Чтение накопленного аудита через /audit/list"
+  dependencies:
+    - "booking module contract"
+    - "notify module contract"
+    - "sqlite storage"
+
+compatibility:
+  module_contract_version: "0.1.0"

@@ -1,0 +1,116 @@
+contract_version: "1.0"
+module:
+  name: "booking"
+  owner: "example"
+  summary: "Модуль создания и чтения бронирований"
+
+http:
+  operations:
+    - operation_id: "create_booking"
+      method: "GET"
+      path: "/booking/create"
+      summary: "Создать бронирование по slot и name"
+      x-idempotent: false
+      x-transactional: "none"
+      x-emits: ["booking/create-requested", "booking/created", "booking/rejected"]
+      request:
+        query:
+          type: object
+          required: [slot, name]
+          properties:
+            slot: {type: string}
+            name: {type: string}
+      responses:
+        "200": {description: "Бронь создана"}
+        "400": {description: "Некорректные входные параметры"}
+        "409": {description: "Слот уже занят"}
+
+    - operation_id: "get_booking"
+      method: "GET"
+      path: "/booking/get"
+      summary: "Получить бронирование по идентификатору"
+      x-idempotent: true
+      x-idempotency-key: "query.id"
+      x-transactional: "none"
+      request:
+        query:
+          type: object
+          required: [id]
+          properties:
+            id: {type: string, format: uuid}
+      responses:
+        "200": {description: "Бронирование найдено"}
+        "400": {description: "Параметр id отсутствует"}
+        "404": {description: "Бронирование не найдено"}
+
+    - operation_id: "list_bookings"
+      method: "GET"
+      path: "/booking/list"
+      summary: "Список бронирований"
+      x-idempotent: true
+      x-idempotency-key: "method + ':' + path"
+      x-transactional: "none"
+      request:
+        query: {type: object}
+      responses:
+        "200": {description: "Список бронирований"}
+
+events:
+  publishes:
+    - event: "booking/create-requested"
+      summary: "Запрошено создание бронирования"
+      x-owner-module: "booking"
+      payload:
+        type: object
+        required: [slot, name]
+        properties:
+          slot: {type: string}
+          name: {type: string}
+
+    - event: "booking/created"
+      summary: "Бронирование успешно создано"
+      x-owner-module: "booking"
+      payload:
+        type: object
+        required: [booking_id, slot, name]
+        properties:
+          booking_id: {type: string, format: uuid}
+          slot: {type: string}
+          name: {type: string}
+
+    - event: "booking/rejected"
+      summary: "Создание бронирования отклонено"
+      x-owner-module: "booking"
+      payload:
+        type: object
+        required: [slot, name, reason]
+        properties:
+          slot: {type: string}
+          name: {type: string}
+          reason: {type: string}
+
+types:
+  schemas:
+    booking_id: {type: string, format: uuid}
+    slot: {type: string}
+    customer_name: {type: string}
+
+behavior:
+  defaults:
+    x-timeout-ms: 1000
+    x-failure-mode: "fail-fast"
+
+narrative:
+  purpose: "Управляет критическим путем создания брони и предоставляет read API"
+  scenarios:
+    - "GET /booking/create публикует booking/create-requested и пытается сохранить запись"
+    - "При успехе публикуется booking/created"
+    - "При конфликте слота публикуется booking/rejected"
+    - "GET /booking/get и /booking/list читают данные из локальной БД"
+  dependencies:
+    - "sqlite storage"
+    - "notify module contract"
+    - "audit module contract"
+
+compatibility:
+  module_contract_version: "0.1.0"

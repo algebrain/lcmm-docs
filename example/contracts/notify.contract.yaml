@@ -1,0 +1,69 @@
+contract_version: "1.0"
+module:
+  name: "notify"
+  owner: "example"
+  summary: "Реактивный модуль уведомлений по событиям бронирования"
+
+http:
+  operations:
+    - operation_id: "list_notifications"
+      method: "GET"
+      path: "/notify/list"
+      summary: "Список сохраненных уведомлений"
+      x-idempotent: true
+      x-idempotency-key: "method + ':' + path"
+      x-transactional: "none"
+      request:
+        query: {type: object}
+      responses:
+        "200": {description: "Список уведомлений"}
+
+events:
+  publishes:
+    - event: "notify/booking-created"
+      summary: "Уведомление по созданной брони сформировано"
+      x-owner-module: "notify"
+      payload:
+        type: object
+        required: [booking_id, message]
+        properties:
+          booking_id: {type: string, format: uuid}
+          message: {type: string}
+
+  subscribes:
+    - event: "booking/created"
+      summary: "Создать уведомление по новой брони"
+      x-idempotent: false
+      x-transactional: "none"
+      x-emits: ["notify/booking-created"]
+      x-consumes: ["booking/created"]
+      payload:
+        type: object
+        required: [booking_id, slot, name]
+        properties:
+          booking_id: {type: string, format: uuid}
+          slot: {type: string}
+          name: {type: string}
+
+types:
+  schemas:
+    notification_message: {type: string}
+
+behavior:
+  defaults:
+    x-timeout-ms: 1000
+    x-failure-mode: "fail-fast"
+
+narrative:
+  purpose: "Реактивно формирует уведомления после создания брони"
+  scenarios:
+    - "Подписка на booking/created"
+    - "Сохранение уведомления в локальную таблицу"
+    - "Публикация notify/booking-created с parent-envelope"
+  dependencies:
+    - "booking module contract"
+    - "audit module contract"
+    - "sqlite storage"
+
+compatibility:
+  module_contract_version: "0.1.0"

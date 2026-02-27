@@ -13,6 +13,7 @@ This repository contains a draft of the LCMM documentation and a runnable sample
 - [Logging & Observability](docs/LOGGING.md)
 - [Modules](docs/MODULE.md)
 - [Database Abstraction](docs/DATABASE.md)
+- [Contract Specification](docs/CONTRACT.md)
 - [Sagas](docs/SAGA.md)
 - [Transact](docs/TRANSACT.md)
 - [Configure (Developer)](docs/CONFIGURE.md)
