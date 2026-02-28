@@ -11,13 +11,12 @@ This repository contains a draft of the LCMM documentation and a runnable sample
 - Installed `Clojure` CLI (`clj`)
 - Installed `Babashka` (`bb`)
 
-**Docs index**
 **Recommended reading order**
 - [Pragmatism](docs/PRAGMATISM.md)
 - [Architecture](docs/ARCH.md)
 - [Event Bus API](docs/BUS.md)
 
-Other docs in `docs/` as needed for your current task
+Other docs in `docs/` as needed for your current task:
 - [Router API](docs/ROUTER.md)
 - [Configure (Developer)](docs/CONFIGURE.md)
 - [Configure (Admin)](docs/CONFIGURE_ADMIN.md)
@@ -26,6 +25,9 @@ Other docs in `docs/` as needed for your current task
 - [Database Abstraction](docs/DATABASE.md)
 - [Contract Specification](docs/CONTRACT.md)
 - [Hydration Protocol](docs/HYDRATION.md)
+- [Security Baseline](docs/SECURITY.md)
+- [Security: App Level](docs/SECURE_APP.md)
+- [Security: Module Level](docs/SECURE_MODULE.md)
 - [Transact](docs/TRANSACT.md)
 - [Sagas](docs/SAGA.md)
 
