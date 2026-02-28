@@ -11,8 +11,8 @@ This repository contains a draft of the LCMM documentation and a runnable sample
 - [Pragmatism](docs/PRAGMATISM.md)
 - [Architecture](docs/ARCH.md)
 - [Event Bus API](docs/BUS.md)
-- Other docs in `docs/` as needed for your current task
 
+Other docs in `docs/` as needed for your current task
 - [Router API](docs/ROUTER.md)
 - [Configure (Developer)](docs/CONFIGURE.md)
 - [Configure (Admin)](docs/CONFIGURE_ADMIN.md)
@@ -21,8 +21,8 @@ This repository contains a draft of the LCMM documentation and a runnable sample
 - [Database Abstraction](docs/DATABASE.md)
 - [Contract Specification](docs/CONTRACT.md)
 - [Hydration Protocol](docs/HYDRATION.md)
-- [Sagas](docs/SAGA.md)
 - [Transact](docs/TRANSACT.md)
+- [Sagas](docs/SAGA.md)
 
 **Booking server sample (`example/`)**
 
