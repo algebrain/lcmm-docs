@@ -7,6 +7,12 @@ This repository contains a draft of the LCMM documentation and a runnable sample
 - A booking server sample in `example/` (GET-first demo for browser-based manual checks)
 
 **Docs index**
+**Recommended reading order**
+- [Pragmatism](docs/PRAGMATISM.md)
+- [Architecture](docs/ARCH.md)
+- [Event Bus API](docs/BUS.md)
+- Other docs in `docs/` as needed for your current task
+
 - [Architecture](docs/ARCH.md)
 - [Event Bus API](docs/BUS.md)
 - [Router API](docs/ROUTER.md)
