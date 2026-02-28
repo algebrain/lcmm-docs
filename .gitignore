@@ -17,6 +17,7 @@ test-report-*.txt
 plan-*.md
 .answers
 .plans
+.drafts
 *.local
 *.local.*
 data

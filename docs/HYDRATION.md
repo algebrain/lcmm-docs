@@ -112,6 +112,7 @@ payload:
 5. Если пришел `entity/updated` -> сохранить нужные поля и продолжить.
 6. Если пришел `entity/not-found` -> записать negative cache и завершить "not found".
 7. Если таймаут -> применить `failure_mode`.
+8. Опционально: consumer МОЖЕТ запустить deferred hydration (не ждать в текущем запросе) и вернуть ответ "данные еще не готовы".
 
 ### 8.1 Механизм ожидания ответа в текущем запросе (waiter bridge)
 
@@ -185,7 +186,7 @@ payload:
 1. Cleanup waiter в `finally`.
 2. Защита от дублей: первый ответ завершает waiter, остальные игнорируются.
 3. Ключ waiter РЕКОМЕНДУЕТСЯ строить с `correlation-id` опубликованного `entity/unknown`, чтобы не смешивать параллельные запросы.
-4. Если выбран non-blocking режим, вместо ожидания в текущем запросе используется `202 Accepted` + асинхронная доставка результата.
+4. Consumer МОЖЕТ выбрать non-blocking режим (deferred hydration): не ждать в текущем запросе и вернуть `202 Accepted` с признаком "данные еще не готовы".
 
 ## 9. Алгоритм source of truth
 
@@ -207,11 +208,16 @@ payload:
 - `max_retries`: `1`
 - `retry_backoff_ms`: `200`
 
-### 10.2 Правила
+### 10.2 Обязательные методики anti-storm
 
-1. Пока запрос по `(entity_type, entity_id)` в in-flight, повторный `entity/unknown` не отправляется.
-2. После `entity/not-found` consumer ставит negative cache на `negative_cache_ttl_ms`.
-3. До истечения TTL повторные неизвестные запросы по тому же ID блокируются.
+1. `Negative cache` ОБЯЗАТЕЛЬНО: после `entity/not-found` consumer сохраняет запись "не найдено" с TTL (`negative_cache_ttl_ms`).
+2. `Request collapse` ОБЯЗАТЕЛЬНО: когда гидрация по `(entity_type, entity_id)` уже началась, повторный `entity/unknown` не отправляется, пока активен in-flight период (`in_flight_window_ms`).
+
+Для простых приложений обе методики ДОПУСКАЕТСЯ реализовывать прямо в БД consumer (таблица negative-cache и таблица/флаг in-flight).
+
+### 10.3 Опциональная методика
+
+1. `Deferred hydration` (опционально): consumer МОЖЕТ не блокировать текущий запрос, а вернуть "данные еще не готовы" и завершить гидрацию асинхронно.
 
 ## 11. Стратегии отказа
 
