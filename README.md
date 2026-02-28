@@ -6,6 +6,11 @@ This repository contains a draft of the LCMM documentation and a runnable sample
 - Library documentation in `docs/`
 - A booking server sample in `example/` (GET-first demo for browser-based manual checks)
 
+**Minimal developer setup**
+- `Java 25` (required for virtual threads support)
+- Installed `Clojure` CLI (`clj`)
+- Installed `Babashka` (`bb`)
+
 **Docs index**
 **Recommended reading order**
 - [Pragmatism](docs/PRAGMATISM.md)
