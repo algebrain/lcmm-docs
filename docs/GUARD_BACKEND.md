@@ -365,3 +365,16 @@ Hostname в security-path не поддерживается:
 ```
 
 Рекомендуется отправлять эти события в ваш security logger/alerting.
+
+
+## 17. Performance expectations for backend implementers
+
+To keep guard overhead predictable under load, backend implementations should follow these practical rules:
+
+1. Avoid global scans for per-request operations.
+2. Keep counter operations efficient per logical key (`k`) and bucket.
+3. Prune only affected key ranges/buckets, not the whole dataset.
+4. Prefer data structures that support incremental window maintenance.
+5. Treat `incr-bucket!` as a hot-path operation and keep it allocation-light.
+
+For `CounterStore`, target behavior should be close to O(1) per increment and bounded pruning cost per key.

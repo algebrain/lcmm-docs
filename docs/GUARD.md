@@ -435,3 +435,13 @@
 
 `event` содержит минимум: `:store`, `:stage`, `:path`, `:error`, `:mode`.
 Это позволяет поднимать alert при деградации snapshot/restore.
+
+
+## 19. Performance implementation note
+
+`lcmm-guard` may use small internal performance optimizations (for example, bounded in-process cache for canonical IP parsing).
+
+Important:
+1. These are implementation details, not public API contracts.
+2. Security behavior and decision semantics remain unchanged.
+3. Integrations should not rely on internal cache characteristics.
