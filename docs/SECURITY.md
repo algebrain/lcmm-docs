@@ -223,3 +223,24 @@
 4. согласованную интеграцию с логированием и security-событиями.
 
 Для этого нужен отдельный слой/библиотека проекта (см. план `lcmm-guard` в `docs.local/INDEX.md`).
+
+
+## 20. Границы ответственности `lcmm-guard` и app-layer
+
+Чтобы избежать дублирования и конфликтов:
+
+1. `lcmm-guard` отвечает за:
+- trusted-proxy IP resolution policy;
+- detector (validation/auth/suspicious windows);
+- temporary IP ban с TTL и allow-list;
+- rate-limit policy;
+- fail-open/fail-closed policy;
+- security events (detected/ban/unban/degraded).
+
+2. App-layer (`lcmm-http`/Ring middleware) отвечает за:
+- `max_body_bytes`;
+- request timeout;
+- concurrency limits на инстанс;
+- HTTP error-contract и финальный mapping `action -> HTTP response`.
+
+3. Для малого проекта это целевой режим: guard не дублирует HTTP runtime ограничения, а интегрируется с ними.

@@ -149,3 +149,22 @@
 - `clj-commons/carmine` + Redis.
 
 5. Для детекта+ban как единой политики требуется отдельный слой (см. план `lcmm-guard` в `docs.local/INDEX.md`).
+
+
+## 14. Интеграция `lcmm-guard` с app-level защитой
+
+Рекомендуемое разделение ответственности:
+
+1. `lcmm-guard` делает:
+- trusted-proxy IP resolution;
+- detector / ban / rate-limit;
+- fail-open/fail-closed;
+- security-events (включая деградацию и proxy misconfig).
+
+2. App-layer middleware делает:
+- body size limit;
+- request timeout;
+- concurrency limit;
+- финальный HTTP ответ по результату guard.
+
+3. Важно: app-layer не должен полагаться на DNS-резолвинг для client IP в security-path; guard принимает только IP literal.
