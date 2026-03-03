@@ -9,7 +9,7 @@
 После прочтения вы должны уметь:
 
 1. реализовать backend через протоколы `CounterStore` и `TtlStore`;
-2. подключить его в `detector`, `rate-limiter`, `ban-store`, `core/evaluate-request!`;
+2. подключить его снаружи через публичные конструкторы `make-counter-store`/`make-ttl-store` -> `make-ban-store`/`make-rate-limiter`/`make-detector` -> `make-guard`;
 3. проверить корректность поведения тестами.
 
 ## 2. Куда backend подключается в архитектуре
@@ -25,6 +25,24 @@ Backend используется только в двух местах:
 - нужен `ban-store` (бан с TTL).
 
 Остальные части (`ip-resolver`, `mode-policy`, `security-events`, `core`) backend-независимы.
+
+Если вы соблюдаете контракты протоколов, новый backend подключается без изменений исходного кода `lcmm-guard`.
+
+
+## 2.1 Backend API quick reference
+
+| API | Purpose | Return |
+|---|---|---|
+| `incr-bucket!` | Increment per `(key, bucket)` counter | new counter value (`long`) |
+| `buckets-snapshot` | Read buckets for one logical key | `{bucket -> count}` |
+| `prune-before-bucket!` | Remove old buckets `< min-bucket` for one key | ignored (`nil` acceptable) |
+| `put-ttl!` | Save value with absolute expiry time | stored value |
+| `get-live` | Read value only if not expired | value or `nil` |
+| `delete-key!` | Remove key | ignored (`nil` acceptable) |
+| `flush!` (optional) | Force durability flush | implementation-defined |
+| `shutdown!` (optional) | Stop background tasks + final flush | implementation-defined |
+
+Use this table first; deep semantics and examples are below.
 
 ## 3. Контракты протоколов (обязательно)
 
@@ -315,7 +333,7 @@ Backend используется только в двух местах:
 И интеграционный флаг в ban-store:
 1. `:flush-on-ban? true` вызывает `flush!` на ttl-store после `ban!` (если store реализует `DurableStore`).
 
-## 12. Ошибки backend и `mode-policy`
+## 13. Ошибки backend и `mode-policy`
 
 Если backend может бросать исключения:
 
@@ -326,7 +344,7 @@ Backend используется только в двух местах:
 
 Так сохраняется единое поведение защиты.
 
-## 13. Definition of Done для нового backend
+## 14. Definition of Done для нового backend
 
 Backend считается готовым, когда:
 
@@ -336,7 +354,7 @@ Backend считается готовым, когда:
 4. документированы ограничения backend (durability, latency, failover);
 5. описаны настройки (pool, timeout, retry) и безопасные дефолты.
 
-## 14. Краткая памятка
+## 15. Краткая памятка
 
 1. Храните время в секундах.
 2. Держите операции инкремента атомарными.
@@ -345,14 +363,14 @@ Backend считается готовым, когда:
 5. Для production добавляйте мониторинг деградации по событиям `:guard/degraded`.
 
 
-## 15. Literal-only IP policy
+## 16. Literal-only IP policy
 
 Hostname в security-path не поддерживается:
 1. backend и интеграция guard должны работать с canonical IP literal;
 2. DNS-resolve client IP запрещен в guard-path.
 
 
-## 16. Наблюдаемость persistence ошибок
+## 17. Наблюдаемость persistence ошибок
 
 Для in-memory persistence используйте callback:
 
@@ -367,7 +385,7 @@ Hostname в security-path не поддерживается:
 Рекомендуется отправлять эти события в ваш security logger/alerting.
 
 
-## 17. Performance expectations for backend implementers
+## 18. Performance expectations for backend implementers
 
 To keep guard overhead predictable under load, backend implementations should follow these practical rules:
 

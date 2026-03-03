@@ -6,6 +6,18 @@
 **Важно:** `lcmm-guard` применяется на уровне приложения (app-level) в архитектуре LCMM.
 Он не предназначен для встраивания внутрь отдельных бизнес-модулей (module-level).
 
+## 0. 5-minute path
+
+Use this if you want to get running quickly:
+
+1. Add dependency in `deps.edn`.
+2. Build guard with `make-guard`.
+3. Call `evaluate-request!` in app-level middleware before business handlers.
+4. Map `:action` to HTTP response (`allow` -> continue, `rate-limited/banned` -> block, `degraded-*` by policy).
+5. Forward `:events` to logging/monitoring.
+
+Strict API contracts are documented in [GUARD_API](./GUARD_API.md).
+
 ## 1. Что это за библиотека
 
 `lcmm-guard` — это слой app-level безопасности для малого и среднего HTTP API.
@@ -32,6 +44,8 @@
 ## 3. Быстрый старт (минимальная рабочая интеграция)
 
 Ниже код, после которого guard уже можно использовать в приложении.
+
+Для строгого контракта аргументов/возвратов см. [GUARD_API](./GUARD_API.md).
 
 ### 3.1 Подключение в `deps.edn`
 
@@ -152,7 +166,11 @@
 
 Если порог превышен, guard вернет `:banned` и сформирует security-события.
 
-## 5. Контракт `evaluate-request!`
+## 5. Контракты Core API
+
+Подробный строгий reference: [GUARD_API](./GUARD_API.md).
+
+### 5.1 `evaluate-request!`
 
 Сигнатура:
 
@@ -164,12 +182,6 @@
                                     :code :some-reason ; optional
                                     :now epoch-seconds
                                     :correlation-id "..."})
-
-(lcmm-guard.core/unban-ip! guard-instance
-                           {:ip "203.0.113.10"
-                            :reason :manual
-                            :now epoch-seconds
-                            :correlation-id "..."})
 ```
 
 Возврат:
@@ -180,7 +192,36 @@
  :events [{:event/kind ... :event/ts ... :event/payload ...} ...]}
 ```
 
-### 5.1 Порядок принятия решения внутри guard
+### 5.2 `unban-ip!`
+
+Сигнатура:
+
+```clojure
+(lcmm-guard.core/unban-ip! guard-instance
+                           {:ip "203.0.113.10"
+                            :reason :manual
+                            :now epoch-seconds
+                            :correlation-id "..."})
+```
+
+Возврат (успех):
+
+```clojure
+{:ok? true
+ :ip "203.0.113.10"
+ :events [{:event/kind :guard/unbanned ...}]}
+```
+
+Возврат (деградация):
+
+```clojure
+{:ok? false
+ :ip "203.0.113.10"
+ :action :degraded-allow|:degraded-block
+ :events [{:event/kind :guard/degraded ...}]}
+```
+
+### 5.3 Порядок принятия решения внутри `evaluate-request!`
 
 1. `ip-resolver`: определить клиентский IP.
 2. `ban-store`: если IP уже в бане -> `:banned`.
@@ -222,9 +263,12 @@
 Правила:
 1. `X-Forwarded-For` используется только если `remote-addr` входит в `trusted-proxies`.
 2. если proxy не trusted, используется `:remote-addr`.
-3. если IP не распознан, guard вернет `:guard/ip-unresolved` и действие по `mode-policy`:
+3. если `:trust-xff? true`, но после нормализации `trusted-proxies` пуст, resolver добавляет warning `:proxy-config-empty`, а guard пишет событие `:guard/proxy-misconfig` в `:events`.
+4. если IP не распознан, guard вернет `:guard/ip-unresolved` и действие по `mode-policy`:
 - `:degraded-allow` для `:fail-open`;
 - `:degraded-block` для `:fail-closed`.
+
+Рекомендация: мониторьте `:guard/proxy-misconfig` как сигнал ошибки конфигурации trusted proxy.
 
 ## 8. Ban store
 
