@@ -9,51 +9,68 @@
 ### Функция `init!`
 
 *   **Сигнатура:** `(defn init! [deps])`
-*   **Параметр `deps`:** Карта зависимостей, которая всегда содержит следующие обязательные компоненты:
-    *   `:bus` — экземпляр `event-bus` (см. `BUS.md`)
-    *   `:router` — экземпляр `Router` (см. `ROUTER.md`)
-    *   `:logger` — функция-логгер, соответствующая стандартному интерфейсу (см. `LOGGING.md`)
+*   **Параметр `deps`:** Карта зависимостей.
+    *   **Обязательные ключи:**
+        *   `:bus` — экземпляр `event-bus` (см. `BUS.md`)
+        *   `:router` — экземпляр `Router` (см. `ROUTER.md`)
+        *   `:logger` — функция-логгер, соответствующая стандартному интерфейсу (см. `LOGGING.md`)
+    *   **Опциональные ключи:**
+        *   `:observe-registry` — общий реестр метрик приложения для `lcmm-observe`.
 *   **Ответственность:** Внутри `init!` модуль должен:
     *   Зарегистрировать свои HTTP-маршруты в переданном `:router`.
     *   Подписаться на необходимые события в переданном `:bus`.
     *   Использовать переданный `:logger` для всех внутренних лог-сообщений.
+    *   При наличии `:observe-registry` регистрировать и обновлять только полезные модульные метрики.
+
+`observe-registry` не является обязательным для запуска модуля. Модуль должен корректно работать и без него.
 
 **Пример структуры модуля:**
 
 ```clojure
 (ns my-module.core
-  (:require [lcmm.bus :as bus]
+  (:require [lcmm.observe :as obs]
+            [lcmm.bus :as bus]
             [lcmm.router :as router]))
 
 ;; Внутренние функции-обработчики HTTP-запросов
-(defn- handle-get-resource [bus logger req]
+(defn- handle-get-resource [bus logger op-total req]
   (logger :info {:component ::my-module, :event :get-resource-request, :path (:uri req)})
   ;; ...логика получения ресурса...
-  (bus/publish bus :my-module/resource-accessed {:resource-id "abc"} {:module ::my-module}) ; Пример публикации события
+  (when op-total
+    (obs/inc! op-total 1.0 {:module "my-module" :result "ok"}))
+  (bus/publish bus :my-module/resource-accessed {:resource-id "abc"} {:module ::my-module})
   {:status 200 :body "Resource data"})
 
 ;; Внутренние функции-обработчики событий шины
-(defn- handle-resource-updated [bus logger envelope]
+(defn- handle-resource-updated [bus logger op-total envelope]
   (logger :info {:component ::my-module, :event :resource-updated-event, :payload (:payload envelope)})
   ;; ...логика реакции на обновление ресурса...
-  )
+  (when op-total
+    (obs/inc! op-total 1.0 {:module "my-module" :result "event-processed"})))
 
 (defn init!
   "Инициализирует модуль, регистрируя маршруты и подписываясь на события."
-  [{:keys [bus router logger]}]
+  [{:keys [bus router logger observe-registry]}]
   (logger :info {:component ::my-module, :event :module-initializing})
 
-  ;; 1. Регистрация HTTP-маршрутов
-  (router/add-route! router
-                     :get "/api/my-module/resource"
-                     (partial handle-get-resource bus logger) ; Частичное применение зависимостей
-                     {:name ::get-resource})
+  ;; Опциональная модульная метрика
+  (let [op-total (when observe-registry
+                   (obs/counter! observe-registry
+                                 :my-module/important-op-total
+                                 {:help "Important module operations"
+                                  :labels [:module :result]}))]
 
-  ;; 2. Подписка на события шины
-  (bus/subscribe bus
-                 :some-other-module/resource-updated
-                 (fn [bus envelope]
-                   (handle-resource-updated bus logger envelope)))
+    ;; 1. Регистрация HTTP-маршрутов
+    (router/add-route! router
+                       :get "/api/my-module/resource"
+                       (partial handle-get-resource bus logger op-total)
+                       {:name ::get-resource})
+
+    ;; 2. Подписка на события шины
+    (bus/subscribe bus
+                   :some-other-module/resource-updated
+                   (fn [bus envelope]
+                     (handle-resource-updated bus logger op-total envelope))))
 
   (logger :info {:component ::my-module, :event :module-initialized}))
 ```
@@ -81,7 +98,24 @@
 *   **Структура лог-сообщений**: Все лог-сообщения **должны быть картами**. Обязательно включайте ключи `:component` (с именем вашего модуля, например, `::my-module`) и `:event` для лучшей категоризации и поиска логов.
 *   **Пример**: `(logger :info {:component ::my-module, :event :user-data-processed, :user-id 123})`.
 
-## 5. Работа с базой данных (если модулю нужна БД)
+## 5. Наблюдаемость (Observability)
+
+Интеграция `lcmm-observe` на уровне модулей строится через общий `observe-registry`, который модулю передает приложение.
+
+Правила:
+*   Модуль **может** писать свои метрики, если это действительно полезно для эксплуатации/отладки.
+*   Модуль **не должен**:
+    *   создавать отдельный глобальный registry;
+    *   поднимать свой `/metrics` endpoint;
+    *   определять глобальные policy observability.
+*   Приложение должно:
+    *   создать единый registry;
+    *   передать его в модули через `:observe-registry`;
+    *   использовать этот же registry в handler для `/metrics`.
+
+Если один и тот же registry используется и в модуле, и в `/metrics`, модульные метрики автоматически попадут в экспорт Prometheus.
+
+## 6. Работа с базой данных (если модулю нужна БД)
 
 Если модуль работает с базой данных, он обязан поддерживать **две реализации**:
 *   `SQLite` (пишется первой и служит эталоном для тестов и документации).
@@ -95,18 +129,18 @@
 
 Смотри подробные правила и пример абстракции в `DATABASE.md`.
 
-## 6. Конфигурирование модулей
+## 7. Конфигурирование модулей
 
 Для конфигурирования модулей используйте библиотеку [`lcmm-configure`](https://github.com/algebrain/lcmm-configure). Правила и примеры описаны в [`./CONFIGURE.md`](./CONFIGURE.md) и [`./CONFIGURE_ADMIN.md`](./CONFIGURE_ADMIN.md). Модуль не должен самостоятельно реализовывать логику сборки конфига.
 
 Цель — максимально простой опыт для администраторов: один понятный порядок, минимум "магии".
 
-## 7. Сборка и Запуск Системы
+## 8. Сборка и Запуск Системы
 
 Основная часть приложения (`-main` функция) отвечает за инициализацию всех ключевых компонентов и модулей:
 
-1.  **Создание базовых сервисов**: Создаются экземпляры `event-bus`, `Router` и глобальный `logger`.
-2.  **Инициализация модулей**: Для каждого модуля вызывается его функция `init!`, которой передаются созданные базовые сервисы в карте зависимостей.
-3.  **Запуск веб-сервера**: `Router` компилируется в финальный `Ring-handler` (с применением глобального middleware, если необходимо) и передается веб-серверу (например, `http-kit`).
+1.  **Создание базовых сервисов**: Создаются экземпляры `event-bus`, `Router`, глобальный `logger` и общий `observe-registry`.
+2.  **Инициализация модулей**: Для каждого модуля вызывается его функция `init!`, которой передаются созданные базовые сервисы в карте зависимостей, включая `:observe-registry`.
+3.  **Запуск веб-сервера**: `Router` компилируется в финальный `Ring-handler`, оборачивается в handler наблюдаемости и передается веб-серверу.
 
-Этот подход гарантирует, что каждый модуль получает все необходимые зависимости "сверху" (Inversion of Control) и функционирует как независимая, но интегрированная часть общей системы.
+Этот подход гарантирует, что каждый модуль получает все необходимые зависимости "сверху" (Inversion of Control), а модульные метрики без дополнительного кода попадают в единый `/metrics` endpoint приложения.
