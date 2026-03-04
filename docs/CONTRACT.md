@@ -340,19 +340,89 @@ read_providers:
   provides:
     - provider_id: "users/get-user-by-id"
       summary: "Получить пользователя по id"
-      input_schema: "UserByIdInput"
-      output_schema: "UserRecord|nil"
+      input:
+        type: map
+        required: [user-id]
+        properties:
+          user-id: {type: string}
+      output:
+        type: map-or-nil
+        description: "User record or nil when user does not exist"
       errors: ["invalid-arg", "unavailable"]
-      guarantees:
-        consistency: "strong"
+      error_behavior:
+        mode: "mixed" # return | throw | mixed
+        return_error_shape:
+          type: map
+          required: [code]
+          properties:
+            code: {type: keyword}
+            message: {type: string}
+            retryable?: {type: boolean}
+        throw_types: ["clojure.lang.ExceptionInfo"]
   requires:
     - provider_id: "users/get-user-by-id"
 ```
 
-Правила:
+### 16.1 Поля `provides`: зачем нужны и как применять
 
-1. `provider_id` ОБЯЗАТЕЛЬНО указывается в формате `domain/action`.
-2. В `provides` ОБЯЗАТЕЛЬНО фиксируются вход/выход и ожидаемые ошибки.
-3. `requires` трактуются как обязательные зависимости по определению.
-4. Если required provider отсутствует, приложение должно завершить startup-check
+| Поле | Зачем | Когда указывать | Когда не указывать | Допустимые значения (v1) |
+|---|---|---|---|---|
+| `provider_id` | Стабильный идентификатор read-provider | Всегда | Никогда | `domain/action` (например `users/get-user-by-id`) |
+| `summary` | Краткое назначение provider | Всегда | Никогда | Непустая строка |
+| `input` | Прямое описание входа вызова функции | Всегда | Никогда | Inline-описание структуры аргумента provider |
+| `output` | Прямое описание успешного результата функции | Всегда | Никогда | Inline-описание результата; допускается `nil` если это часть контракта |
+| `errors` | Явный список доменных/операционных ошибок | Всегда | Никогда | Массив кодов ошибок (см. 16.2) |
+| `error_behavior.mode` | Явно фиксирует способ сигнализации ошибок | Всегда | Никогда | `return` / `throw` / `mixed` |
+| `error_behavior.return_error_shape` | Форма возвращаемой ошибки | Обязательно для `return`/`mixed` | Для `throw` | Inline-описание error-map |
+| `error_behavior.throw_types` | Какие исключения допускаются контрактом | Обязательно для `throw`/`mixed` | Для `return` | Массив строк с классами/типами исключений |
+
+Важно:
+- `input` и `output` описывают именно вызов функции provider, а не формат
+  HTTP/event сообщения.
+- Контракты сообщений (OpenAPI/AsyncAPI payload) для этого блока не применяются.
+
+### 16.2 Коды ошибок provider (`errors`)
+
+Минимально рекомендуется использовать коды:
+
+- `invalid-arg` - вход невалиден, повтор без изменения входа бессмысленен.
+- `not-found` - сущность по ключу не найдена.
+- `forbidden` - доступ к данным запрещен политикой безопасности.
+- `timeout` - источник не успел ответить в SLA-время.
+- `unavailable` - источник временно недоступен.
+- `internal` - внутренняя ошибка provider.
+
+Проект может вводить дополнительные доменные коды, но базовые коды должны
+сохранять одинаковую семантику между модулями.
+
+### 16.3 Контракт поведения provider при ошибках и падениях
+
+В контракте обязательно фиксируется `error_behavior.mode`.
+Библиотека допускает все три режима и не ограничивает разработчика одним подходом.
+
+1. `return`:
+- provider возвращает ошибку значением согласно `return_error_shape`.
+- пример:
+
+```clojure
+{:ok? false
+ :error {:code :invalid-arg
+         :message "user-id must be string"
+         :retryable? false}}
+```
+
+2. `throw`:
+- provider сигнализирует ошибку через исключения из `throw_types`.
+- consumer обязан иметь policy обработки исключений.
+
+3. `mixed`:
+- часть ошибок возвращается значением, часть сигнализируется исключениями;
+- разделение обязано быть описано текстом в `summary` или соседнем пояснении
+  модуля, чтобы consumer корректно обработал оба канала.
+
+### 16.4 Правила для `requires`
+
+1. `requires` трактуются как обязательные зависимости по определению.
+2. `provider_id` в `requires` ОБЯЗАТЕЛЕН.
+3. Если required provider отсутствует, приложение должно завершить startup-check
    с fail-fast ошибкой (`assert-requirements!`).
