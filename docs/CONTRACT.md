@@ -347,7 +347,6 @@ read_providers:
         consistency: "strong"
   requires:
     - provider_id: "users/get-user-by-id"
-      consumer_module: "orders"
 ```
 
 Правила:
@@ -355,6 +354,5 @@ read_providers:
 1. `provider_id` ОБЯЗАТЕЛЬНО указывается в формате `domain/action`.
 2. В `provides` ОБЯЗАТЕЛЬНО фиксируются вход/выход и ожидаемые ошибки.
 3. `requires` трактуются как обязательные зависимости по определению.
-4. Поле вида `required: true` в `requires` не используется.
-5. Если required provider отсутствует, приложение должно завершить startup-check
+4. Если required provider отсутствует, приложение должно завершить startup-check
    с fail-fast ошибкой (`assert-requirements!`).
