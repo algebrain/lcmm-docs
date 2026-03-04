@@ -55,6 +55,11 @@ events:
   publishes: []
   subscribes: []
 
+read_providers:
+  # Контракт sync-read провайдеров модуля
+  provides: []
+  requires: []
+
 types:
   # Типы/схемы, используемые в HTTP и events (по OpenAPI/AsyncAPI)
   schemas: {}
@@ -174,6 +179,8 @@ compatibility:
 - `x-consumes: []`
 - `events.publishes: []`
 - `events.subscribes: []`
+- `read_providers.provides: []`
+- `read_providers.requires: []`
 - `compatibility.backwards_compatible_with: []`
 ### 10.4 Минимальный стартовый профиль (чтобы не перегружать контракт)
 
@@ -311,9 +318,43 @@ compatibility:
 5. `narrative` заполнен и отражает реальный сценарий работы модуля.
 6. Имена событий соответствуют формату `domain/action`.
 7. Breaking-изменения помечены в процессе версионирования.
+8. Для sync-read, если используется `read-provider registry`, заполнен блок
+   `read_providers` (минимум `provides` и/или `requires`).
 
 ## 15. Non-goals v1
 
 1. Автогенерация полной реализации модуля из контракта.
 2. Формальная верификация бизнес-логики.
 3. Полная стандартизация всех возможных операционных политик.
+
+## 16. Контракт sync-read: `read_providers`
+
+Блок `read_providers` описывает контрактные зависимости для
+`read-provider registry` и используется только для read-only межмодульного
+доступа.
+
+Структура:
+
+```yaml
+read_providers:
+  provides:
+    - provider_id: "users/get-user-by-id"
+      summary: "Получить пользователя по id"
+      input_schema: "UserByIdInput"
+      output_schema: "UserRecord|nil"
+      errors: ["invalid-arg", "unavailable"]
+      guarantees:
+        consistency: "strong"
+  requires:
+    - provider_id: "users/get-user-by-id"
+      consumer_module: "orders"
+```
+
+Правила:
+
+1. `provider_id` ОБЯЗАТЕЛЬНО указывается в формате `domain/action`.
+2. В `provides` ОБЯЗАТЕЛЬНО фиксируются вход/выход и ожидаемые ошибки.
+3. `requires` трактуются как обязательные зависимости по определению.
+4. Поле вида `required: true` в `requires` не используется.
+5. Если required provider отсутствует, приложение должно завершить startup-check
+   с fail-fast ошибкой (`assert-requirements!`).
