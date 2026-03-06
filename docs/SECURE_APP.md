@@ -3,6 +3,7 @@
 Версия: `1.1-draft`
 
 Этот документ описывает, что должно быть реализовано на уровне всего приложения (общий HTTP-слой, middleware, защита входа).
+Практический middleware order и место security wiring в composition root дополнительно собраны в [`APP_COMPOSITION.md`](./APP_COMPOSITION.md).
 
 ## 1. Термины (кратко)
 

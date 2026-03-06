@@ -5,6 +5,8 @@
 2. как безопасно управлять схемой через миграции;
 3. в каком порядке запускать приложение, чтобы не получить "живой API с ломаной схемой".
 
+За app-level wiring storage resources и место `:db` в composition root отвечает [`APP_COMPOSITION.md`](./APP_COMPOSITION.md). Здесь фокус только на storage policy и module-facing DB boundary.
+
 ## 1. Базовые правила работы с БД
 
 1. Реализация для `SQLite` пишется первой и считается эталоном.

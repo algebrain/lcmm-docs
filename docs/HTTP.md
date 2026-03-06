@@ -4,6 +4,8 @@
 1. `module-level` разработчики;
 2. `app-level` разработчики.
 
+За полный app-level composition порядок вокруг `router`, `observe`, `guard` и middleware отвечает [`APP_COMPOSITION.md`](./APP_COMPOSITION.md). Этот документ остаётся HTTP-focused.
+
 ## 1. Назначение
 
 `lcmm-http` закрывает базовый HTTP runtime layer:

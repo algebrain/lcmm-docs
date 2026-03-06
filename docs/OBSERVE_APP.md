@@ -4,6 +4,7 @@
 Подход специально оптимизирован для небольших и средних backend-проектов.
 
 Канонический API-контракт описан в [`OBSERVABILITY.md`](./OBSERVABILITY.md).
+Общий composition root, в который этот observe-layer встраивается вместе с `router`, `http` и `guard`, описан в [`APP_COMPOSITION.md`](./APP_COMPOSITION.md).
 
 ## 1. Зона ответственности (уровень приложения)
 

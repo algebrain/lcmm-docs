@@ -2,6 +2,8 @@
 
 Версия: `1.0-draft`
 
+Для практического места этого механизма в startup sequence см. [`APP_COMPOSITION.md`](./APP_COMPOSITION.md).
+
 ## 1. Назначение
 
 `read-provider registry` нужен для контролируемого синхронного чтения данных
