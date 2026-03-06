@@ -13,6 +13,9 @@
 4. Тесты должны быть интеграционными, без моков БД.
 5. Один и тот же набор тестов должен запускаться и на `SQLite`, и на основной БД (меняется только конфиг).
 6. Если основной БД пока нет, тесты на `SQLite` считаются корректной базовой реализацией.
+7. Предпочтительный режим для реального монолита: приложение создает DB resource и передает его модулю через `init!`.
+8. Self-managed `SQLite` допустим как опциональный режим, если это явно разрешено конфигом и подходит задаче.
+9. Если приложением передан внешний DB resource, модуль не должен игнорировать его и создавать параллельный backend.
 
 ## 2. Слой абстракции без глубоких папок
 
@@ -51,18 +54,61 @@
 
 Модуль получает `store` как зависимость и работает только через протокол.
 
-## 3. Подключение реализации через конфиг
+## 3. Выбор backend через конфиг и `init!`
 
 ```clojure
-(defn make-store [config]
-  (case (:db/engine config)
-    :sqlite   (db/make-sqlite-store {:datasource (:sqlite/ds config)})
-    :postgres (db/make-pg-store {:datasource (:pg/ds config)})))
+(let [{:keys [config]} (cfg/load-config
+                        {:module-name "users"
+                         :config "./users_config.toml"
+                         :allow-relative? true
+                         :env-only? false
+                         :allowed-keys #{"storage.mode"
+                                         "storage.backend"
+                                         "storage.allow-self-managed"}
+                         :required #{"storage.mode" "storage.backend"}})]
+  ... )
 ```
 
-Пример значений:
-1. `:db/engine :sqlite`
-2. `:db/engine :postgres`
+Пример TOML:
+
+```toml
+[storage]
+mode = "external-managed"   # или "self-managed"
+backend = "jdbc"            # например: jdbc, sqlite
+allow_self_managed = false
+```
+
+Практическое правило:
+1. Конфиг определяет policy (`external-managed` или `self-managed`).
+2. `init!` получает конкретный внешний resource через `deps`, например `:db`.
+3. Если `:db` передан и backend поддерживается, модуль обязан использовать его.
+4. Если `:db` передан, но backend не поддерживается, модуль должен завершить инициализацию ошибкой.
+5. Если `:db` не передан, модуль может поднять self-managed backend только если это явно разрешено конфигом.
+
+Короткий пример:
+
+```clojure
+(defn init! [{:keys [config db] :as deps}]
+  (let [mode (get config "storage.mode")
+        backend (or (:backend-type db)
+                    (get config "storage.backend"))]
+    (cond
+      db
+      (case backend
+        "jdbc" (start-with-external-jdbc deps)
+        "sqlite" (start-with-external-sqlite deps)
+        (throw (ex-info "Unsupported external backend"
+                        {:backend backend})))
+
+      (and (= mode "self-managed")
+           (= (get config "storage.backend") "sqlite")
+           (true? (get config "storage.allow-self-managed")))
+      (start-with-self-managed-sqlite deps)
+
+      :else
+      (throw (ex-info "Storage backend is not configured"
+                      {:mode mode :backend backend})))))
+```
 
 ## 4. Почему миграции обязательны
 
