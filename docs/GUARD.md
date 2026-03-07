@@ -33,7 +33,55 @@ Strict API contracts are documented in [GUARD_API](./GUARD_API.md).
 Важно: `lcmm-guard` не заменяет ваш HTTP/router слой, auth middleware и validation middleware.
 Он принимает уже нормализованные факты и возвращает действие (`:allow`, `:rate-limited`, `:banned`, `:degraded-*`).
 
-## 2. Когда использовать
+## 2. Минимальная схема для небольшого приложения
+
+Если смотреть не на отдельные функции, а на живое приложение, то guard обычно
+встраивается так:
+
+1. приложение создает guard при запуске;
+2. основной HTTP-обработчик оборачивается через `wrap-guard`;
+3. обычный запрос сначала проходит через guard;
+4. при неудачном входе приложение отдельно сообщает guard о такой попытке;
+5. для снятия блокировки есть отдельный служебный маршрут;
+6. результат guard переводится в обычный HTTP-ответ.
+
+Короткий опорный пример:
+
+```clojure
+(def guard-instance (make-guard config))
+
+(def app-handler
+  (-> raw-handler
+      (wrap-guard guard-instance logger)
+      (http/wrap-correlation-context {:expose-headers? true})
+      (http/wrap-error-contract {})))
+```
+
+Если вход не удался, приложение может отдельно сообщить об этом guard:
+
+```clojure
+(guard/evaluate-request! guard-instance
+                         {:request request
+                          :kind :auth-failed
+                          :endpoint "/auth/demo-login"
+                          :code :invalid-credentials
+                          :now (quot (System/currentTimeMillis) 1000)
+                          :correlation-id (:lcmm/correlation-id request)})
+```
+
+А для ручного снятия блокировки используется отдельный вызов:
+
+```clojure
+(guard/unban-ip! guard-instance
+                 {:ip "203.0.113.10"
+                  :reason :manual
+                  :now (quot (System/currentTimeMillis) 1000)
+                  :correlation-id (:lcmm/correlation-id request)})
+```
+
+Именно такую схему удобно держать в голове при чтении остального документа.
+
+## 3. Когда использовать
 
 Используйте `lcmm-guard`, если вам нужен единый security-policy слой поверх Ring/Reitit:
 
@@ -41,13 +89,13 @@ Strict API contracts are documented in [GUARD_API](./GUARD_API.md).
 2. хотите одинаковую fail-policy для всех защитных компонентов;
 3. хотите детальные security events в одном формате.
 
-## 3. Быстрый старт (минимальная рабочая интеграция)
+## 4. Быстрый старт (минимальная рабочая интеграция)
 
 Ниже код, после которого guard уже можно использовать в приложении.
 
 Для строгого контракта аргументов/возвратов см. [GUARD_API](./GUARD_API.md).
 
-### 3.1 Подключение в `deps.edn`
+### 4.1 Подключение в `deps.edn`
 
 Пока библиотека не опубликована в Clojars, подключайте из GitHub:
 
@@ -60,7 +108,7 @@ Strict API contracts are documented in [GUARD_API](./GUARD_API.md).
 
 Рекомендуется всегда фиксировать конкретный `:git/sha`.
 
-### 3.2 Создание guard-инстанса
+### 4.2 Создание guard-инстанса
 
 ```clojure
 (ns myapp.security
@@ -94,7 +142,7 @@ Strict API contracts are documented in [GUARD_API](./GUARD_API.md).
       :mode-policy {:mode :fail-open}})))
 ```
 
-### 3.3 Применение результата guard к HTTP-ответу
+### 4.3 Применение результата guard к HTTP-ответу
 
 ```clojure
 (ns myapp.security.middleware
@@ -141,7 +189,7 @@ Strict API contracts are documented in [GUARD_API](./GUARD_API.md).
 4. единая fail-policy на сбои storage;
 5. security events в `result :events`.
 
-## 4. Интеграция с фактами безопасности (validation/auth/suspicious)
+## 5. Интеграция с фактами безопасности (validation/auth/suspicious)
 
 `evaluate-request!` может принимать `:kind`.
 Это нужно, чтобы детектор видел ошибки валидации/авторизации и подозрительные повторы.
@@ -166,11 +214,11 @@ Strict API contracts are documented in [GUARD_API](./GUARD_API.md).
 
 Если порог превышен, guard вернет `:banned` и сформирует security-события.
 
-## 5. Контракты Core API
+## 6. Контракты Core API
 
 Подробный строгий reference: [GUARD_API](./GUARD_API.md).
 
-### 5.1 `evaluate-request!`
+### 6.1 `evaluate-request!`
 
 Сигнатура:
 
@@ -192,7 +240,7 @@ Strict API contracts are documented in [GUARD_API](./GUARD_API.md).
  :events [{:event/kind ... :event/ts ... :event/payload ...} ...]}
 ```
 
-### 5.2 `unban-ip!`
+### 6.2 `unban-ip!`
 
 Сигнатура:
 
@@ -221,7 +269,7 @@ Strict API contracts are documented in [GUARD_API](./GUARD_API.md).
  :events [{:event/kind :guard/degraded ...}]}
 ```
 
-### 5.3 Порядок принятия решения внутри `evaluate-request!`
+### 6.3 Порядок принятия решения внутри `evaluate-request!`
 
 1. `ip-resolver`: определить клиентский IP.
 2. `ban-store`: если IP уже в бане -> `:banned`.
