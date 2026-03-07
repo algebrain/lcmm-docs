@@ -1,12 +1,14 @@
 # LCMM Documentation Draft
 
-This repository is a working documentation space for LCMM: a modular monolith style built around explicit module boundaries, message-based cooperation, and application assembly that stays readable under growth.
+This repository is a working documentation space for LCMM: a way to build a modular monolith with explicit boundaries, message-based cooperation, and application assembly that remains readable as the system grows.
 
-The point of this repository is not only to describe ideas, but to make them concrete enough that a developer can open the docs, inspect a runnable application, and understand how the pieces fit together without guessing. The emphasis is on practical structure: how modules communicate, how the application is assembled, how responsibilities stay separated, and how the system remains understandable as it evolves.
+The main value of LCMM is not novelty for its own sake. It is an attempt to keep a growing codebase understandable by forcing important architectural decisions into the open: who owns data, how modules talk to each other, where synchronous reads are allowed, where side effects belong, and how the whole application is assembled without hidden coupling.
+
+This repository exists to make those ideas concrete enough to be used, questioned, and improved. The docs are not meant to be a decorative theory layer on top of code. They are meant to describe a practical style of building systems that can stay coherent under change, especially when more than one person needs to understand and evolve them from shared written rules rather than tribal knowledge.
 
 What is here:
 - documentation drafts in `docs/`;
-- runnable examples in the repository, including a compact booking sample and a larger reference-style application under active development.
+- supporting material for runnable examples in the repository.
 
 **Minimal developer setup**
 - `Java 25` (required for virtual threads support)
@@ -15,6 +17,12 @@ What is here:
 
 **Where to start**
 
-Start with the root ideas in `docs/`, then follow links from there depending on the question you are trying to answer. The documentation is meant to be read as a connected set of working notes, not as a frozen specification index.
+Start with `docs/`, not by jumping randomly between files, but by following the intended reading path. The recommended order is collected in [docs/READING_ORDER.md](docs/READING_ORDER.md).
 
-If you want to see code instead of theory first, open one of the runnable examples and read it together with the corresponding documents. That is usually the fastest way to understand what LCMM is trying to preserve: explicit boundaries, predictable composition, and a system that can grow without turning into a tangle of hidden dependencies.
+If you are trying to understand what matters most in LCMM, focus on this first:
+- modules must have clear boundaries;
+- synchronous cross-module reads must stay explicit;
+- side effects should move through messages instead of direct calls;
+- application assembly must be understandable as a whole, not hidden in scattered glue code.
+
+That is the thread running through the repository. The exact set of examples and supporting documents may still change, but this is the core idea the repository is trying to preserve. 
