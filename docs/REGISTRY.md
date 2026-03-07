@@ -36,6 +36,15 @@
 - Уровень модуля-потребителя: декларация required-провайдеров и получение
   провайдера для вызова.
 
+Практическая схема:
+
+1. приложение создает один общий registry;
+2. модули-владельцы данных регистрируют свои providers;
+3. модули-потребители объявляют обязательные зависимости;
+4. приложение выполняет `assert-requirements!` до старта HTTP;
+5. provider затем используется либо внутри consumer-модуля, либо в app-level
+   handler.
+
 ## 4. API по функциям
 
 ### 4.1 `make-registry`
@@ -101,6 +110,12 @@
   {:ok? false :error {:code :provider-missing}})
 ```
 
+Когда выбирать:
+
+1. когда отсутствие provider действительно допустимо;
+2. когда логика умеет продолжать работу без него;
+3. когда missing provider не считается ошибкой wiring.
+
 ### 4.4 `require-provider`
 
 Зачем нужна:
@@ -121,6 +136,12 @@
 
 Поведение:
 - Если провайдер отсутствует, бросает `ex-info` с `:reason :missing-provider`.
+
+Когда выбирать:
+
+1. когда зависимость обязательна;
+2. когда отсутствие provider означает неправильный wiring приложения;
+3. когда нужен fail-fast вместо мягкой деградации.
 
 ### 4.5 `declare-requirements!`
 
@@ -195,6 +216,14 @@
 4. Приложение вызывает `assert-requirements!`.
 5. Только после успешной проверки стартует HTTP-сервер.
 
+Boundary rules:
+
+1. providers используются только для read-only доступа;
+2. provider не должен выполнять side effects;
+3. каскадные provider-вызовы provider -> provider запрещены;
+4. missing required provider должен обнаруживаться до старта HTTP;
+5. registry не заменяет event-bus и не предназначен для реактивных процессов.
+
 ## 6. Минимальный end-to-end пример
 
 ```clojure
@@ -217,3 +246,51 @@
 ;; app startup-check
 (rpr/assert-requirements! registry)
 ```
+
+Более реалистичный пример уровня `reference-app`:
+
+```clojure
+(ns app.main
+  (:require [lcmm.read-provider-registry :as rpr]
+            [lcmm.router :as router]))
+
+(def registry (rpr/make-registry))
+
+;; accounts module
+(rpr/register-provider! registry
+  {:provider-id :accounts/get-user-by-login
+   :module :accounts
+   :provider-fn (fn [{:keys [login]}]
+                  (when (= login "alice")
+                    {:id "u-alice" :login "alice"}))})
+
+;; booking module
+(rpr/declare-requirements! registry
+  :booking
+  #{:accounts/get-user-by-id :catalog/get-slot-by-id})
+
+;; app startup-check
+(rpr/assert-requirements! registry)
+
+;; app-level handler
+(defn install-security-routes! [app-router]
+  (let [get-user-by-login (rpr/require-provider registry :accounts/get-user-by-login)]
+    (router/add-route! app-router
+                       :get "/auth/demo-login"
+                       (fn [req]
+                         (if-let [user (get-user-by-login {:login (get-in req [:query-params "login"])})]
+                           {:status 200 :body (pr-str user)}
+                           {:status 401 :body "invalid credentials"})))))
+```
+
+## 7. Связь с контрактами модулей
+
+`REGISTRY.md` описывает runtime API.
+Как фиксировать ожидания по provider в YAML-контрактах модулей, описано в
+[`CONTRACT.md`](./CONTRACT.md), section `read_providers`.
+
+Практическое правило:
+
+1. `provider_id` в коде и контракте должен совпадать;
+2. shape входа и результата не должен расходиться между runtime и YAML;
+3. если поведение provider меняется, код и контракт обновляются вместе.

@@ -19,6 +19,7 @@
 2. Позволяет понимать окружение без доступа к исходному коду.
 3. Объединяет HTTP-границы и событийные границы в одном контракте.
 4. Формализует поведенческие требования к обработчикам через `x-` поля.
+5. Фиксирует контрактную границу для provider-based sync-read через `read_providers`.
 
 ## 3. Нормативные термины
 
@@ -36,6 +37,16 @@
 - зафиксировать правила, важные именно для взаимодействия модулей в LCMM.
 
 ## 5. Каноническая структура YAML-контракта модуля
+
+В LCMM у модуля может быть до трех разных межмодульных границ:
+
+1. HTTP
+2. events
+3. `read_providers`
+
+`read_providers` не являются narrative-дополнением.
+Если модуль использует `read-provider registry`, этот блок является такой же
+нормальной контрактной поверхностью, как HTTP и события.
 
 Каждый контракт ОБЯЗАТЕЛЬНО содержит следующие разделы верхнего уровня:
 
@@ -333,6 +344,14 @@ compatibility:
 `read-provider registry` и используется только для read-only межмодульного
 доступа.
 
+Практическая роль этого блока:
+
+1. `REGISTRY.md` описывает runtime API и startup wiring.
+2. `read_providers` в контракте фиксирует, что именно ожидается от provider по
+   входу, выходу и ошибкам.
+3. `provider_id`, shape входа и shape результата должны оставаться согласованными
+   между runtime-кодом и YAML-контрактом.
+
 Структура:
 
 ```yaml
@@ -381,6 +400,34 @@ read_providers:
   HTTP/event сообщения.
 - Контракты сообщений (OpenAPI/AsyncAPI payload) для этого блока не применяются.
 
+Канонический practical shape `provides`:
+
+```yaml
+read_providers:
+  provides:
+    - provider_id: "accounts/get-user-by-id"
+      summary: "Вернуть пользователя по user-id"
+      input:
+        type: map
+        required: [user-id]
+        properties:
+          user-id: {type: string}
+      output:
+        type: map-or-nil
+        description: "User record или nil, если пользователь не найден"
+      errors: ["invalid-arg", "unavailable", "internal"]
+      error_behavior:
+        mode: "mixed"
+        return_error_shape:
+          type: map
+          required: [code]
+          properties:
+            code: {type: keyword}
+            message: {type: string}
+            retryable?: {type: boolean}
+        throw_types: ["clojure.lang.ExceptionInfo"]
+```
+
 ### 16.2 Коды ошибок provider (`errors`)
 
 Минимально рекомендуется использовать коды:
@@ -420,9 +467,99 @@ read_providers:
 - разделение обязано быть описано текстом в `summary` или соседнем пояснении
   модуля, чтобы consumer корректно обработал оба канала.
 
+Практически рекомендуется читать поведение так:
+
+1. успешный результат - нормальное значение provider;
+2. `nil` - допустимый business result, если сущность не найдена и это прямо
+   разрешено `output`;
+3. error-map - ожидаемая ошибка вызова, например `invalid-arg`;
+4. исключение - операционный сбой или иной контрактно допустимый failure path.
+
+Пример mixed behavior:
+
+```clojure
+;; success
+{:id "u-alice" :login "alice"}
+
+;; business not-found
+nil
+
+;; invalid input
+{:code :invalid-arg
+ :message "user-id must be non-empty string"
+ :retryable? false}
+
+;; operational failure
+(throw (ex-info "Provider unavailable" {:reason :unavailable}))
+```
+
 ### 16.4 Правила для `requires`
 
 1. `requires` трактуются как обязательные зависимости по определению.
 2. `provider_id` в `requires` ОБЯЗАТЕЛЕН.
 3. Если required provider отсутствует, приложение должно завершить startup-check
    с fail-fast ошибкой (`assert-requirements!`).
+
+Рекомендуемый practical shape `requires`:
+
+```yaml
+read_providers:
+  requires:
+    - provider_id: "accounts/get-user-by-id"
+      summary: "Получить пользователя перед созданием бронирования"
+      input:
+        type: map
+        required: [user-id]
+        properties:
+          user-id: {type: string}
+      expected_output:
+        type: map-or-nil
+        description: "User record или nil, если пользователь не найден"
+```
+
+Рекомендуется:
+
+1. указывать `summary`, чтобы назначение зависимости было понятно без чтения
+   кода;
+2. указывать `input`, чтобы consumer не додумывал форму вызова;
+3. указывать `expected_output`, чтобы было ясно, считается ли `nil` допустимым
+   business result;
+4. при важной зависимости кратко отражать ожидаемую семантику ошибок в
+   `summary`, `narrative.dependencies` или соседнем пояснении.
+
+Полезная опорная пара `provides` -> `requires`:
+
+```yaml
+# accounts contract
+read_providers:
+  provides:
+    - provider_id: "accounts/get-user-by-id"
+      summary: "Вернуть пользователя по user-id"
+      input:
+        type: map
+        required: [user-id]
+        properties:
+          user-id: {type: string}
+      output:
+        type: map-or-nil
+        description: "User record или nil"
+      errors: ["invalid-arg", "unavailable", "internal"]
+      error_behavior:
+        mode: "mixed"
+```
+
+```yaml
+# booking contract
+read_providers:
+  requires:
+    - provider_id: "accounts/get-user-by-id"
+      summary: "Проверить пользователя перед созданием бронирования"
+      input:
+        type: map
+        required: [user-id]
+        properties:
+          user-id: {type: string}
+      expected_output:
+        type: map-or-nil
+        description: "User record или nil"
+```
