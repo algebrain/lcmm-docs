@@ -1,6 +1,7 @@
 # Документация по API: event-bus
 
 Этот документ описывает публичный API для `event-bus`.
+Для сквозного walkthrough от HTTP publish до reactive derived events и audit см. [`TRACE_FLOW.md`](./TRACE_FLOW.md).
 
 ## Быстрый старт
 

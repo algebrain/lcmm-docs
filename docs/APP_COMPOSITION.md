@@ -14,6 +14,7 @@
 5. [OBSERVE_APP](./OBSERVE_APP.md)
 6. [SECURE_APP](./SECURE_APP.md)
 7. [GUARD](./GUARD.md)
+8. [TRACE_FLOW](./TRACE_FLOW.md)
 
 ## 1. Что такое app-level composition root
 
@@ -35,6 +36,7 @@
 Это главный принцип composition.
 
 Для рабочего примера app-level assembly см. также `reference-app/app/src/reference_app/system.clj`.
+Для сквозного walkthrough по correlation и causation см. также [`TRACE_FLOW.md`](./TRACE_FLOW.md).
 
 ## 2. Что именно обычно собирает `app`
 

@@ -5,6 +5,7 @@
 2. `app-level` разработчики.
 
 За полный app-level composition порядок вокруг `router`, `observe`, `guard` и middleware отвечает [`APP_COMPOSITION.md`](./APP_COMPOSITION.md). Этот документ остаётся HTTP-focused.
+Для сквозного walkthrough по correlation и causation от HTTP до reactive flow см. [`TRACE_FLOW.md`](./TRACE_FLOW.md).
 
 ## 1. Назначение
 
