@@ -1,6 +1,7 @@
 # Спецификация API: Read-Provider Registry
 
 Версия: `1.0-draft`
+Репозиторий: `github.com/algebrain/lcmm-registry`
 
 Для практического места этого механизма в startup sequence см. [`APP_COMPOSITION.md`](./APP_COMPOSITION.md).
 
@@ -109,6 +110,11 @@
   (get-user {:user-id "u-1"})
   {:ok? false :error {:code :provider-missing}})
 ```
+
+Поведение:
+- Если `provider-id` не keyword, бросает `ex-info` с `:reason :invalid-argument`.
+- Если `registry` невалиден, бросает `ex-info` с `:reason :invalid-registry`.
+- Если provider отсутствует, возвращает `nil`.
 
 Когда выбирать:
 

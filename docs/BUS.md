@@ -1,5 +1,7 @@
 # Документация по API: event-bus
 
+Репозиторий: `github.com/algebrain/lcmm-event-bus`
+
 Этот документ описывает публичный API для `event-bus` и его обычное место в LCMM-приложении.
 
 Для общего порядка сборки приложения см. [`APP_COMPOSITION.md`](./APP_COMPOSITION.md).
