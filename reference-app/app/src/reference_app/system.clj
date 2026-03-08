@@ -28,18 +28,37 @@
                   :reason :registry-check-failed
                   :diagnostic {:message (.getMessage ex)}})))}])
 
+(defn- prepare-startup-state! [app-config startup-mode logger]
+  (case startup-mode
+    :reset
+    (do
+      (storage/reset-demo-state! app-config)
+      (logger :info {:component ::system
+                     :event :app/demo-state-reset}))
+
+    :continue
+    (logger :info {:component ::system
+                   :event :app/demo-state-continued})
+
+    (throw (ex-info "Unsupported startup mode"
+                    {:reason :unsupported-startup-mode
+                     :startup-mode startup-mode}))))
+
 (defn make-system
   ([] (make-system nil nil))
   ([override-config]
    (make-system override-config nil))
-  ([override-config {:keys [logger]
-                     :or {logger (logging/make-app-logger)}}]
+  ([override-config {:keys [logger startup-mode]
+                     :or {logger (logging/make-app-logger)
+                          startup-mode :reset}}]
    (let [logger (or logger (logging/make-app-logger))]
      (logger :info {:component ::system
-                    :event :app/starting})
+                    :event :app/starting
+                    :startup-mode startup-mode})
    (try
      (let [{:keys [config meta]} (config/load-app-config logger)
            app-config (merge config override-config)
+           _ (prepare-startup-state! app-config startup-mode logger)
            event-bus (bus/make-bus
                      :schema-registry (schema-registry/make-schema-registry)
                      :logger logger
@@ -109,6 +128,7 @@
                            (http/wrap-error-contract {}))
            system-map {:config app-config
                        :logger logger
+                       :startup-mode startup-mode
                        :bus event-bus
                        :router app-router
                        :guard guard-instance

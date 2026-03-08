@@ -66,3 +66,10 @@
    "storage.backend" "sqlite"
    "storage.allow-self-managed" false
    "storage.sqlite.path" (str (config-value config (str (name module-id) ".db_path") ""))})
+
+(defn module-db-paths [config]
+  {:accounts (config-value config "accounts.db_path" "./data/accounts.db")
+   :catalog (config-value config "catalog.db_path" "./data/catalog.db")
+   :booking (config-value config "booking.db_path" "./data/booking.db")
+   :notify (config-value config "notify.db_path" "./data/notify.db")
+   :audit (config-value config "audit.db_path" "./data/audit.db")})

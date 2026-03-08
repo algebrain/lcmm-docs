@@ -1,5 +1,6 @@
 (ns reference-app.integration-test
-  (:require [clojure.string :as str]
+  (:require [clojure.edn :as edn]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [reference-app.logging :as logging]
             [reference-app.system :as system]))
@@ -15,8 +16,9 @@
       (.delete ^java.io.File f))))
 
 (defn- make-test-system
-  ([] (make-test-system nil))
-  ([logger]
+  ([] (make-test-system nil :reset))
+  ([logger] (make-test-system logger :reset))
+  ([logger startup-mode]
    (let [accounts-db (temp-db-path "reference-app-accounts-" "accounts.db")
          catalog-db (temp-db-path "reference-app-catalog-" "catalog.db")
          booking-db (temp-db-path "reference-app-booking-" "booking.db")
@@ -31,9 +33,23 @@
                                          "guard.login.max_failures" 2
                                          "guard.login.window_sec" 60
                                          "guard.ban_ttl_sec" 600}
-                                        {:logger logger})]
+                                        {:logger logger
+                                         :startup-mode startup-mode})]
      (assoc system-map
             :test-db-resources [accounts-db catalog-db booking-db notify-db audit-db]))))
+
+(defn- make-test-system-on-existing-paths
+  [db-resources startup-mode]
+  (system/make-system {"accounts.db_path" (:path (nth db-resources 0))
+                       "catalog.db_path" (:path (nth db-resources 1))
+                       "booking.db_path" (:path (nth db-resources 2))
+                       "notify.db_path" (:path (nth db-resources 3))
+                       "audit.db_path" (:path (nth db-resources 4))
+                       "guard.rate_limit" 100
+                       "guard.login.max_failures" 2
+                       "guard.login.window_sec" 60
+                       "guard.ban_ttl_sec" 600}
+                      {:startup-mode startup-mode}))
 
 (defn- req
   ([uri] (req uri {} "198.51.100.10"))
@@ -44,6 +60,9 @@
     :query-params query
     :remote-addr remote-addr
     :headers {}}))
+
+(defn- response-body [response]
+  (edn/read-string (str (:body response))))
 
 (deftest app-skeleton-serves-health-ready-and-module-routes-test
   (testing "app skeleton initializes accounts and catalog routes with correlation headers"
@@ -144,6 +163,61 @@
           (is (every? :correlation-id guard-events))
           (is (every? :request-id guard-events))
           (is (every? #(map? (:guard-event %)) guard-events)))
+        (finally
+          (doseq [resource test-db-resources]
+            (cleanup-temp! resource)))))))
+
+(deftest reset-mode-restores-canonical-demo-state-test
+  (testing "reset mode recreates canonical startup state on repeated start"
+    (let [{:keys [handler test-db-resources]} (make-test-system nil :reset)]
+      (try
+        (let [initial-bookings (handler (req "/bookings"))
+              initial-notifications (handler (req "/notifications"))
+              initial-audit (handler (req "/audit"))
+              create-response (handler (req "/bookings/actions/create" {"slot-id" "slot-09-00"
+                                                                        "user-id" "u-alice"}))]
+          (is (= 200 (:status initial-bookings)))
+          (is (= [] (response-body initial-bookings)))
+          (is (= [] (response-body initial-notifications)))
+          (is (= [] (response-body initial-audit)))
+          (is (= 200 (:status create-response)))
+          (Thread/sleep 250)
+          (let [dirty-bookings (response-body (handler (req "/bookings")))
+                dirty-notifications (response-body (handler (req "/notifications")))
+                dirty-audit (response-body (handler (req "/audit")))]
+            (is (= 1 (count dirty-bookings)))
+            (is (= 1 (count dirty-notifications)))
+            (is (pos? (count dirty-audit)))))
+        (let [{:keys [handler]} (make-test-system-on-existing-paths test-db-resources :reset)
+              bookings-after-reset (response-body (handler (req "/bookings")))
+              notifications-after-reset (response-body (handler (req "/notifications")))
+              audit-after-reset (response-body (handler (req "/audit")))
+              alice (response-body (handler (req "/accounts/me" {"user-id" "u-alice"})))
+              open-slots (response-body (handler (req "/catalog/slots" {"status" "open"})))]
+          (is (= [] bookings-after-reset))
+          (is (= [] notifications-after-reset))
+          (is (= [] audit-after-reset))
+          (is (= "u-alice" (:id alice)))
+          (is (= 2 (count open-slots))))
+        (finally
+          (doseq [resource test-db-resources]
+            (cleanup-temp! resource)))))))
+
+(deftest continue-mode-keeps-existing-state-test
+  (testing "continue mode preserves local sqlite data between starts"
+    (let [{:keys [handler test-db-resources]} (make-test-system nil :reset)]
+      (try
+        (let [create-response (handler (req "/bookings/actions/create" {"slot-id" "slot-09-00"
+                                                                        "user-id" "u-alice"}))]
+          (is (= 200 (:status create-response))))
+        (Thread/sleep 250)
+        (let [{:keys [handler]} (make-test-system-on-existing-paths test-db-resources :continue)
+              bookings (response-body (handler (req "/bookings")))
+              notifications (response-body (handler (req "/notifications")))
+              audit (response-body (handler (req "/audit")))]
+          (is (= 1 (count bookings)))
+          (is (= 1 (count notifications)))
+          (is (pos? (count audit))))
         (finally
           (doseq [resource test-db-resources]
             (cleanup-temp! resource)))))))

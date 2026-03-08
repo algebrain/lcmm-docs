@@ -10,6 +10,16 @@ What is here:
 - documentation drafts in `docs/`;
 - supporting material for runnable examples in the repository.
 
+## Reference App
+
+This repository also contains `reference-app`, a runnable LCMM example.
+
+The composition root lives in `reference-app/app`.
+That example is meant to be started locally and then checked through browser-safe `GET` endpoints.
+
+For the actual run modes and startup behavior, see:
+- [reference-app/app/README.md](reference-app/app/README.md)
+
 **Minimal developer setup**
 - `Java 25` (required for virtual threads support)
 - Installed `Clojure` CLI (`clj`)
