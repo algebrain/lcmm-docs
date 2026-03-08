@@ -1,85 +1,25 @@
 (ns reference-app.integration-test
-  (:require [clojure.edn :as edn]
-            [clojure.string :as str]
+  (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [reference-app.logging :as logging]
-            [reference-app.system :as system]))
-
-(defn- temp-db-path [prefix filename]
-  (let [tmp-dir (.toFile (java.nio.file.Files/createTempDirectory prefix (make-array java.nio.file.attribute.FileAttribute 0)))]
-    {:dir tmp-dir
-     :path (str (.getAbsolutePath tmp-dir) java.io.File/separator filename)}))
-
-(defn- cleanup-temp! [{:keys [dir]}]
-  (when (and dir (.exists ^java.io.File dir))
-    (doseq [f (reverse (file-seq dir))]
-      (.delete ^java.io.File f))))
-
-(defn- make-test-system
-  ([] (make-test-system nil :reset))
-  ([logger] (make-test-system logger :reset))
-  ([logger startup-mode]
-   (let [accounts-db (temp-db-path "reference-app-accounts-" "accounts.db")
-         catalog-db (temp-db-path "reference-app-catalog-" "catalog.db")
-         booking-db (temp-db-path "reference-app-booking-" "booking.db")
-         notify-db (temp-db-path "reference-app-notify-" "notify.db")
-         audit-db (temp-db-path "reference-app-audit-" "audit.db")
-         system-map (system/make-system {"accounts.db_path" (:path accounts-db)
-                                         "catalog.db_path" (:path catalog-db)
-                                         "booking.db_path" (:path booking-db)
-                                         "notify.db_path" (:path notify-db)
-                                         "audit.db_path" (:path audit-db)
-                                         "guard.rate_limit" 100
-                                         "guard.login.max_failures" 2
-                                         "guard.login.window_sec" 60
-                                         "guard.ban_ttl_sec" 600}
-                                        {:logger logger
-                                         :startup-mode startup-mode})]
-     (assoc system-map
-            :test-db-resources [accounts-db catalog-db booking-db notify-db audit-db]))))
-
-(defn- make-test-system-on-existing-paths
-  [db-resources startup-mode]
-  (system/make-system {"accounts.db_path" (:path (nth db-resources 0))
-                       "catalog.db_path" (:path (nth db-resources 1))
-                       "booking.db_path" (:path (nth db-resources 2))
-                       "notify.db_path" (:path (nth db-resources 3))
-                       "audit.db_path" (:path (nth db-resources 4))
-                       "guard.rate_limit" 100
-                       "guard.login.max_failures" 2
-                       "guard.login.window_sec" 60
-                       "guard.ban_ttl_sec" 600}
-                      {:startup-mode startup-mode}))
-
-(defn- req
-  ([uri] (req uri {} "198.51.100.10"))
-  ([uri query] (req uri query "198.51.100.10"))
-  ([uri query remote-addr]
-   {:request-method :get
-    :uri uri
-    :query-params query
-    :remote-addr remote-addr
-    :headers {}}))
-
-(defn- response-body [response]
-  (edn/read-string (str (:body response))))
+            [reference-app.test-support :as support]))
 
 (deftest app-skeleton-serves-health-ready-and-module-routes-test
   (testing "app skeleton initializes accounts and catalog routes with correlation headers"
-    (let [{:keys [handler test-db-resources]} (make-test-system)]
+    (let [{:keys [handler test-db-resources]} (support/make-test-system)]
       (try
         (let [health-response (handler {:request-method :get
                                         :uri "/healthz"
                                         :remote-addr "198.51.100.10"
                                         :headers {}})
-              ready-response (handler (req "/readyz"))
-              accounts-response (handler (req "/accounts/me" {"user-id" "u-alice"}))
-              catalog-response (handler (req "/catalog/slots" {"status" "open"}))
-              booking-create-response (handler (req "/bookings/actions/create" {"slot-id" "slot-09-00"
-                                                                                "user-id" "u-alice"}))]
+              ready-response (handler (support/req "/readyz"))
+              accounts-response (handler (support/req "/accounts/me" {"user-id" "u-alice"}))
+              catalog-response (handler (support/req "/catalog/slots" {"status" "open"}))
+              booking-create-response (handler (support/req "/bookings/actions/create" {"slot-id" "slot-09-00"
+                                                                                        "user-id" "u-alice"}))]
           (Thread/sleep 250)
-          (let [notifications-response (handler (req "/notifications"))
-                audit-response (handler (req "/audit"))]
+          (let [notifications-response (handler (support/req "/notifications"))
+                audit-response (handler (support/req "/audit"))]
             (is (= 200 (:status health-response)))
             (is (= 200 (:status ready-response)))
             (is (= 200 (:status accounts-response)))
@@ -91,11 +31,11 @@
             (is (contains? (:headers health-response) "x-request-id"))))
         (finally
           (doseq [resource test-db-resources]
-            (cleanup-temp! resource)))))))
+            (support/cleanup-temp! resource)))))))
 
 (deftest metrics-endpoint-is-available-test
   (testing "metrics endpoint returns prometheus payload"
-    (let [{:keys [handler test-db-resources]} (make-test-system)]
+    (let [{:keys [handler test-db-resources]} (support/make-test-system)]
       (try
         (let [response (handler {:request-method :get
                                  :uri "/metrics"
@@ -105,17 +45,17 @@
           (is (str/includes? (str (:body response)) "http_server_requests_total")))
         (finally
           (doseq [resource test-db-resources]
-            (cleanup-temp! resource)))))))
+            (support/cleanup-temp! resource)))))))
 
 (deftest guard-demo-login-ban-and-unban-flow-test
   (testing "repeated failed demo-login attempts trigger ban and admin unban restores access"
-    (let [{:keys [handler test-db-resources]} (make-test-system)]
+    (let [{:keys [handler test-db-resources]} (support/make-test-system)]
       (try
-        (let [failed-1 (handler (req "/auth/demo-login" {"login" "missing"} "203.0.113.10"))
-              failed-2 (handler (req "/auth/demo-login" {"login" "missing"} "203.0.113.10"))
-              banned (handler (req "/auth/demo-login" {"login" "alice"} "203.0.113.10"))
-              unban (handler (req "/ops/guard/unban" {"ip" "203.0.113.10"} "198.51.100.200"))
-              success (handler (req "/auth/demo-login" {"login" "alice"} "203.0.113.10"))]
+        (let [failed-1 (handler (support/req "/auth/demo-login" {"login" "missing"} "203.0.113.10"))
+              failed-2 (handler (support/req "/auth/demo-login" {"login" "missing"} "203.0.113.10"))
+              banned (handler (support/req "/auth/demo-login" {"login" "alice"} "203.0.113.10"))
+              unban (handler (support/req "/ops/guard/unban" {"ip" "203.0.113.10"} "198.51.100.200"))
+              success (handler (support/req "/auth/demo-login" {"login" "alice"} "203.0.113.10"))]
           (is (= 401 (:status failed-1)))
           (is (= 429 (:status failed-2)))
           (is (= 429 (:status banned)))
@@ -123,7 +63,7 @@
           (is (= 200 (:status success))))
         (finally
           (doseq [resource test-db-resources]
-            (cleanup-temp! resource)))))))
+            (support/cleanup-temp! resource)))))))
 
 (deftest logger-redacts-sensitive-fields-and-normalizes-exceptions-test
   (testing "app logger redacts nested secrets and serializes exceptions"
@@ -149,11 +89,11 @@
     (let [entries (atom [])
           logger (logging/make-app-logger {:sink entries
                                            :writer nil})
-          {:keys [handler test-db-resources]} (make-test-system logger)]
+          {:keys [handler test-db-resources]} (support/make-test-system logger)]
       (try
-        (handler (req "/auth/demo-login" {"login" "missing"} "203.0.113.10"))
-        (handler (req "/auth/demo-login" {"login" "missing"} "203.0.113.10"))
-        (handler (req "/ops/guard/unban" {"ip" "203.0.113.10"} "198.51.100.200"))
+        (handler (support/req "/auth/demo-login" {"login" "missing"} "203.0.113.10"))
+        (handler (support/req "/auth/demo-login" {"login" "missing"} "203.0.113.10"))
+        (handler (support/req "/ops/guard/unban" {"ip" "203.0.113.10"} "198.51.100.200"))
         (let [guard-events (filter #(= :security/guard-event (:event %)) @entries)
               failed-events (filter #(= :security/demo-login-failed (:event %)) @entries)
               unban-events (filter #(= :security/guard-unban-requested (:event %)) @entries)]
@@ -165,35 +105,35 @@
           (is (every? #(map? (:guard-event %)) guard-events)))
         (finally
           (doseq [resource test-db-resources]
-            (cleanup-temp! resource)))))))
+            (support/cleanup-temp! resource)))))))
 
 (deftest reset-mode-restores-canonical-demo-state-test
   (testing "reset mode recreates canonical startup state on repeated start"
-    (let [{:keys [handler test-db-resources]} (make-test-system nil :reset)]
+    (let [{:keys [handler test-db-resources]} (support/make-test-system nil :reset)]
       (try
-        (let [initial-bookings (handler (req "/bookings"))
-              initial-notifications (handler (req "/notifications"))
-              initial-audit (handler (req "/audit"))
-              create-response (handler (req "/bookings/actions/create" {"slot-id" "slot-09-00"
-                                                                        "user-id" "u-alice"}))]
+        (let [initial-bookings (handler (support/req "/bookings"))
+              initial-notifications (handler (support/req "/notifications"))
+              initial-audit (handler (support/req "/audit"))
+              create-response (handler (support/req "/bookings/actions/create" {"slot-id" "slot-09-00"
+                                                                                "user-id" "u-alice"}))]
           (is (= 200 (:status initial-bookings)))
-          (is (= [] (response-body initial-bookings)))
-          (is (= [] (response-body initial-notifications)))
-          (is (= [] (response-body initial-audit)))
+          (is (= [] (support/response-body initial-bookings)))
+          (is (= [] (support/response-body initial-notifications)))
+          (is (= [] (support/response-body initial-audit)))
           (is (= 200 (:status create-response)))
           (Thread/sleep 250)
-          (let [dirty-bookings (response-body (handler (req "/bookings")))
-                dirty-notifications (response-body (handler (req "/notifications")))
-                dirty-audit (response-body (handler (req "/audit")))]
+          (let [dirty-bookings (support/response-body (handler (support/req "/bookings")))
+                dirty-notifications (support/response-body (handler (support/req "/notifications")))
+                dirty-audit (support/response-body (handler (support/req "/audit")))]
             (is (= 1 (count dirty-bookings)))
             (is (= 1 (count dirty-notifications)))
             (is (pos? (count dirty-audit)))))
-        (let [{:keys [handler]} (make-test-system-on-existing-paths test-db-resources :reset)
-              bookings-after-reset (response-body (handler (req "/bookings")))
-              notifications-after-reset (response-body (handler (req "/notifications")))
-              audit-after-reset (response-body (handler (req "/audit")))
-              alice (response-body (handler (req "/accounts/me" {"user-id" "u-alice"})))
-              open-slots (response-body (handler (req "/catalog/slots" {"status" "open"})))]
+        (let [{:keys [handler]} (support/make-test-system-on-existing-paths test-db-resources :reset)
+              bookings-after-reset (support/response-body (handler (support/req "/bookings")))
+              notifications-after-reset (support/response-body (handler (support/req "/notifications")))
+              audit-after-reset (support/response-body (handler (support/req "/audit")))
+              alice (support/response-body (handler (support/req "/accounts/me" {"user-id" "u-alice"})))
+              open-slots (support/response-body (handler (support/req "/catalog/slots" {"status" "open"})))]
           (is (= [] bookings-after-reset))
           (is (= [] notifications-after-reset))
           (is (= [] audit-after-reset))
@@ -201,23 +141,23 @@
           (is (= 2 (count open-slots))))
         (finally
           (doseq [resource test-db-resources]
-            (cleanup-temp! resource)))))))
+            (support/cleanup-temp! resource)))))))
 
 (deftest continue-mode-keeps-existing-state-test
   (testing "continue mode preserves local sqlite data between starts"
-    (let [{:keys [handler test-db-resources]} (make-test-system nil :reset)]
+    (let [{:keys [handler test-db-resources]} (support/make-test-system nil :reset)]
       (try
-        (let [create-response (handler (req "/bookings/actions/create" {"slot-id" "slot-09-00"
-                                                                        "user-id" "u-alice"}))]
+        (let [create-response (handler (support/req "/bookings/actions/create" {"slot-id" "slot-09-00"
+                                                                                "user-id" "u-alice"}))]
           (is (= 200 (:status create-response))))
         (Thread/sleep 250)
-        (let [{:keys [handler]} (make-test-system-on-existing-paths test-db-resources :continue)
-              bookings (response-body (handler (req "/bookings")))
-              notifications (response-body (handler (req "/notifications")))
-              audit (response-body (handler (req "/audit")))]
+        (let [{:keys [handler]} (support/make-test-system-on-existing-paths test-db-resources :continue)
+              bookings (support/response-body (handler (support/req "/bookings")))
+              notifications (support/response-body (handler (support/req "/notifications")))
+              audit (support/response-body (handler (support/req "/audit")))]
           (is (= 1 (count bookings)))
           (is (= 1 (count notifications)))
           (is (pos? (count audit))))
         (finally
           (doseq [resource test-db-resources]
-            (cleanup-temp! resource)))))))
+            (support/cleanup-temp! resource)))))))
