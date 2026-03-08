@@ -68,6 +68,19 @@
      :body (pr-str {:code "unknown_guard_action"
                     :action (str action)})}))
 
+(defn- request-log-context [request]
+  {:path (:uri request)
+   :remote-addr (:remote-addr request)
+   :correlation-id (:lcmm/correlation-id request)
+   :request-id (:lcmm/request-id request)})
+
+(defn- log-guard-events! [logger request result]
+  (doseq [event (:events result)]
+    (logger :warn (merge {:component ::security
+                          :event :security/guard-event
+                          :guard-event event}
+                         (request-log-context request)))))
+
 (defn wrap-guard [handler guard-instance logger]
   (fn [request]
     (let [result (guard/evaluate-request! guard-instance
@@ -75,10 +88,7 @@
                                            :now (now-sec)
                                            :correlation-id (:lcmm/correlation-id request)})
           short-circuit (guard-response result)]
-      (doseq [event (:events result)]
-        (logger :warn {:component ::security
-                       :event :guard-event
-                       :guard-event event}))
+      (log-guard-events! logger request result)
       (if short-circuit
         short-circuit
         (handler request)))))
@@ -127,9 +137,10 @@
 
           user
           (do
-            (logger :info {:component ::security
-                           :event :demo-login-succeeded
-                           :login login})
+            (logger :info (merge {:component ::security
+                                  :event :security/demo-login-succeeded
+                                  :login login}
+                                 (request-log-context request)))
             (login-success-response user))
 
           :else
@@ -141,10 +152,11 @@
                                                  :now (now-sec)
                                                  :correlation-id (:lcmm/correlation-id request)})
                 short-circuit (guard-response result)]
-            (doseq [event (:events result)]
-              (logger :warn {:component ::security
-                             :event :guard-event
-                             :guard-event event}))
+            (log-guard-events! logger request result)
+            (logger :warn (merge {:component ::security
+                                  :event :security/demo-login-failed
+                                  :login login}
+                                 (request-log-context request)))
             (if short-circuit
               short-circuit
               (login-failure-response))))))))
@@ -161,14 +173,12 @@
                                      :reason :manual
                                      :now (now-sec)
                                      :correlation-id (:lcmm/correlation-id request)})]
-        (doseq [event (:events result)]
-          (logger :warn {:component ::security
-                         :event :guard-event
-                         :guard-event event}))
-        (logger :info {:component ::security
-                       :event :guard-unban-requested
-                       :ip ip
-                       :ok? (:ok? result)})
+        (log-guard-events! logger request result)
+        (logger :info (merge {:component ::security
+                              :event :security/guard-unban-requested
+                              :ip ip
+                              :ok? (:ok? result)}
+                             (request-log-context request)))
         (unban-response result)))))
 
 (defn install-security-routes! [router registry guard-instance logger]

@@ -29,19 +29,25 @@
                   :diagnostic {:message (.getMessage ex)}})))}])
 
 (defn make-system
-  ([] (make-system nil))
+  ([] (make-system nil nil))
   ([override-config]
-   (let [logger (logging/make-app-logger)
-         {:keys [config meta]} (config/load-app-config logger)
-         app-config (merge config override-config)
-         event-bus (bus/make-bus
+   (make-system override-config nil))
+  ([override-config {:keys [logger]
+                     :or {logger (logging/make-app-logger)}}]
+   (let [logger (or logger (logging/make-app-logger))]
+     (logger :info {:component ::system
+                    :event :app/starting})
+   (try
+     (let [{:keys [config meta]} (config/load-app-config logger)
+           app-config (merge config override-config)
+           event-bus (bus/make-bus
                      :schema-registry (schema-registry/make-schema-registry)
                      :logger logger
                      :log-payload :none)
-         app-router (router/make-router)
-         registry (rpr/make-registry)
-         guard-instance (security/make-guard app-config)
-         observe-registry (obs/make-registry
+           app-router (router/make-router)
+           registry (rpr/make-registry)
+           guard-instance (security/make-guard app-config)
+           observe-registry (obs/make-registry
                             :strict-labels? false
                             :max-series-per-metric 5000
                             :on-series-limit :drop-and-log
@@ -96,20 +102,29 @@
                             :route-fn (fn [req]
                                         (or (get-in req [:reitit.core/match :template])
                                             "unknown"))})
-         app-handler (-> observed-handler
-                         (security/wrap-guard guard-instance logger)
-                         (http/wrap-correlation-context {:expose-headers? (boolean (config/config-value app-config "http.expose_correlation_headers" true))})
-                         (http/wrap-error-contract {}))]
-     (logger :info {:component ::system
-                    :event :config-loaded
-                    :source (:source meta)
-                    :file (:file meta)
-                    :env-keys (:env-keys meta)})
-     {:config app-config
-      :logger logger
-      :bus event-bus
-      :router app-router
-      :guard guard-instance
-      :read-provider-registry registry
-      :observe-registry observe-registry
-      :handler app-handler})))
+           app-handler (-> observed-handler
+                           (security/wrap-guard guard-instance logger)
+                           (logging/wrap-request-logging logger)
+                           (http/wrap-correlation-context {:expose-headers? (boolean (config/config-value app-config "http.expose_correlation_headers" true))})
+                           (http/wrap-error-contract {}))
+           system-map {:config app-config
+                       :logger logger
+                       :bus event-bus
+                       :router app-router
+                       :guard guard-instance
+                       :read-provider-registry registry
+                       :observe-registry observe-registry
+                       :handler app-handler}]
+       (logger :info {:component ::system
+                      :event :config-loaded
+                      :source (:source meta)
+                      :file (:file meta)
+                      :env-keys (:env-keys meta)})
+       (logger :info {:component ::system
+                      :event :app/started})
+       system-map)
+     (catch Throwable ex
+       (logger :error {:component ::system
+                       :event :app/start-failed
+                       :exception ex})
+       (throw ex))))))

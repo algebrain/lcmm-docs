@@ -1,6 +1,7 @@
 (ns reference-app.integration-test
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [reference-app.logging :as logging]
             [reference-app.system :as system]))
 
 (defn- temp-db-path [prefix filename]
@@ -13,23 +14,26 @@
     (doseq [f (reverse (file-seq dir))]
       (.delete ^java.io.File f))))
 
-(defn- make-test-system []
-  (let [accounts-db (temp-db-path "reference-app-accounts-" "accounts.db")
-        catalog-db (temp-db-path "reference-app-catalog-" "catalog.db")
-        booking-db (temp-db-path "reference-app-booking-" "booking.db")
-        notify-db (temp-db-path "reference-app-notify-" "notify.db")
-        audit-db (temp-db-path "reference-app-audit-" "audit.db")
-        system-map (system/make-system {"accounts.db_path" (:path accounts-db)
-                                        "catalog.db_path" (:path catalog-db)
-                                        "booking.db_path" (:path booking-db)
-                                        "notify.db_path" (:path notify-db)
-                                        "audit.db_path" (:path audit-db)
-                                        "guard.rate_limit" 100
-                                        "guard.login.max_failures" 2
-                                        "guard.login.window_sec" 60
-                                        "guard.ban_ttl_sec" 600})]
-    (assoc system-map
-           :test-db-resources [accounts-db catalog-db booking-db notify-db audit-db])))
+(defn- make-test-system
+  ([] (make-test-system nil))
+  ([logger]
+   (let [accounts-db (temp-db-path "reference-app-accounts-" "accounts.db")
+         catalog-db (temp-db-path "reference-app-catalog-" "catalog.db")
+         booking-db (temp-db-path "reference-app-booking-" "booking.db")
+         notify-db (temp-db-path "reference-app-notify-" "notify.db")
+         audit-db (temp-db-path "reference-app-audit-" "audit.db")
+         system-map (system/make-system {"accounts.db_path" (:path accounts-db)
+                                         "catalog.db_path" (:path catalog-db)
+                                         "booking.db_path" (:path booking-db)
+                                         "notify.db_path" (:path notify-db)
+                                         "audit.db_path" (:path audit-db)
+                                         "guard.rate_limit" 100
+                                         "guard.login.max_failures" 2
+                                         "guard.login.window_sec" 60
+                                         "guard.ban_ttl_sec" 600}
+                                        {:logger logger})]
+     (assoc system-map
+            :test-db-resources [accounts-db catalog-db booking-db notify-db audit-db]))))
 
 (defn- req
   ([uri] (req uri {} "198.51.100.10"))
@@ -98,6 +102,48 @@
           (is (= 429 (:status banned)))
           (is (= 200 (:status unban)))
           (is (= 200 (:status success))))
+        (finally
+          (doseq [resource test-db-resources]
+            (cleanup-temp! resource)))))))
+
+(deftest logger-redacts-sensitive-fields-and-normalizes-exceptions-test
+  (testing "app logger redacts nested secrets and serializes exceptions"
+    (let [entries (atom [])
+          logger (logging/make-app-logger {:sink entries
+                                           :writer nil})]
+      (logger :error {:component ::test
+                      :event :sample
+                      :authorization "Bearer secret-token"
+                      :nested {:password "qwerty"
+                               :token "abc"}
+                      :exception (ex-info "boom" {:secret "hidden"})})
+      (let [entry (first @entries)]
+        (is (= :error (:level entry)))
+        (is (= "***" (:authorization entry)))
+        (is (= "***" (get-in entry [:nested :password])))
+        (is (= "***" (get-in entry [:nested :token])))
+        (is (= "clojure.lang.ExceptionInfo" (get-in entry [:exception :class])))
+        (is (= "boom" (get-in entry [:exception :message])))))))
+
+(deftest guard-flow-produces-structured-security-logs-test
+  (testing "failed login and unban flow emit security logs with correlation ids"
+    (let [entries (atom [])
+          logger (logging/make-app-logger {:sink entries
+                                           :writer nil})
+          {:keys [handler test-db-resources]} (make-test-system logger)]
+      (try
+        (handler (req "/auth/demo-login" {"login" "missing"} "203.0.113.10"))
+        (handler (req "/auth/demo-login" {"login" "missing"} "203.0.113.10"))
+        (handler (req "/ops/guard/unban" {"ip" "203.0.113.10"} "198.51.100.200"))
+        (let [guard-events (filter #(= :security/guard-event (:event %)) @entries)
+              failed-events (filter #(= :security/demo-login-failed (:event %)) @entries)
+              unban-events (filter #(= :security/guard-unban-requested (:event %)) @entries)]
+          (is (seq guard-events))
+          (is (seq failed-events))
+          (is (seq unban-events))
+          (is (every? :correlation-id guard-events))
+          (is (every? :request-id guard-events))
+          (is (every? #(map? (:guard-event %)) guard-events)))
         (finally
           (doseq [resource test-db-resources]
             (cleanup-temp! resource)))))))
