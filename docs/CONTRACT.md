@@ -341,16 +341,19 @@ compatibility:
 ## 16. Контракт sync-read: `read_providers`
 
 Блок `read_providers` описывает контрактные зависимости для
-`read-provider registry` и используется только для read-only межмодульного
-доступа.
+`read-provider registry` и используется только для межмодульного чтения без
+побочных эффектов.
+
+Этот блок нужно воспринимать не как пояснение "на полях", а как полноценную
+контрактную поверхность модуля, наравне с `http` и `events`.
 
 Практическая роль этого блока:
 
-1. `REGISTRY.md` описывает runtime API и startup wiring.
-2. `read_providers` в контракте фиксирует, что именно ожидается от provider по
-   входу, выходу и ошибкам.
-3. `provider_id`, shape входа и shape результата должны оставаться согласованными
-   между runtime-кодом и YAML-контрактом.
+1. `REGISTRY.md` описывает программный интерфейс и порядок инициализации.
+2. `read_providers` в контракте фиксирует, что именно потребитель может передать
+   на вход и что он вправе ожидать на выходе.
+3. `provider_id`, форма входа и форма результата должны буквально совпадать
+   между кодом и YAML-контрактом.
 
 Структура:
 
@@ -366,7 +369,7 @@ read_providers:
           user-id: {type: string}
       output:
         type: map-or-nil
-        description: "User record or nil when user does not exist"
+        description: "Пользователь или nil, если пользователь не найден"
       errors: ["invalid-arg", "unavailable"]
       error_behavior:
         mode: "mixed" # return | throw | mixed
@@ -380,27 +383,39 @@ read_providers:
         throw_types: ["clojure.lang.ExceptionInfo"]
   requires:
     - provider_id: "users/get-user-by-id"
+      summary: "Проверить пользователя перед выполнением операции"
+      input:
+        type: map
+        required: [user-id]
+        properties:
+          user-id: {type: string}
+      expected_output:
+        type: map-or-nil
+        description: "Пользователь или nil"
 ```
 
 ### 16.1 Поля `provides`: зачем нужны и как применять
 
 | Поле | Зачем | Когда указывать | Когда не указывать | Допустимые значения (v1) |
 |---|---|---|---|---|
-| `provider_id` | Стабильный идентификатор read-provider | Всегда | Никогда | `domain/action` (например `users/get-user-by-id`) |
-| `summary` | Краткое назначение provider | Всегда | Никогда | Непустая строка |
-| `input` | Прямое описание входа вызова функции | Всегда | Никогда | Inline-описание структуры аргумента provider |
-| `output` | Прямое описание успешного результата функции | Всегда | Никогда | Inline-описание результата; допускается `nil` если это часть контракта |
-| `errors` | Явный список доменных/операционных ошибок | Всегда | Никогда | Массив кодов ошибок (см. 16.2) |
-| `error_behavior.mode` | Явно фиксирует способ сигнализации ошибок | Всегда | Никогда | `return` / `throw` / `mixed` |
-| `error_behavior.return_error_shape` | Форма возвращаемой ошибки | Обязательно для `return`/`mixed` | Для `throw` | Inline-описание error-map |
-| `error_behavior.throw_types` | Какие исключения допускаются контрактом | Обязательно для `throw`/`mixed` | Для `return` | Массив строк с классами/типами исключений |
+| `provider_id` | Стабильный идентификатор провайдера | Всегда | Никогда | `domain/action` (например `users/get-user-by-id`) |
+| `summary` | Кратко объясняет смысл провайдера | Всегда | Никогда | Непустая строка |
+| `input` | Описывает аргумент вызова провайдера | Всегда | Никогда | Встроенное описание структуры входа |
+| `output` | Описывает обычный успешный результат | Всегда | Никогда | Встроенное описание результата; `nil` допустим только если это часть контракта |
+| `errors` | Перечисляет ожидаемые коды ошибок | Всегда | Никогда | Массив кодов ошибок (см. 16.3) |
+| `error_behavior.mode` | Фиксирует способ сигнализации ошибок | Всегда | Никогда | `return` / `throw` / `mixed` |
+| `error_behavior.return_error_shape` | Описывает форму возвращаемой ошибки | Обязательно для `return` и `mixed` | Для `throw` | Встроенное описание error-map |
+| `error_behavior.throw_types` | Перечисляет допустимые исключения | Обязательно для `throw` и `mixed` | Для `return` | Массив строк с типами исключений |
 
 Важно:
-- `input` и `output` описывают именно вызов функции provider, а не формат
-  HTTP/event сообщения.
-- Контракты сообщений (OpenAPI/AsyncAPI payload) для этого блока не применяются.
 
-Канонический practical shape `provides`:
+1. `input` и `output` описывают именно вызов provider-функции, а не HTTP-запрос
+   и не payload события.
+2. Контракты сообщений из OpenAPI и AsyncAPI для этого блока не применяются.
+3. `provider_id` в коде и в YAML должен совпадать буквально, без "почти того же"
+   смысла и без переименования на одной стороне.
+
+Канонический шаблон `provides`:
 
 ```yaml
 read_providers:
@@ -414,7 +429,7 @@ read_providers:
           user-id: {type: string}
       output:
         type: map-or-nil
-        description: "User record или nil, если пользователь не найден"
+        description: "Пользователь или nil, если пользователь не найден"
       errors: ["invalid-arg", "unavailable", "internal"]
       error_behavior:
         mode: "mixed"
@@ -428,85 +443,111 @@ read_providers:
         throw_types: ["clojure.lang.ExceptionInfo"]
 ```
 
-### 16.2 Коды ошибок provider (`errors`)
+### 16.2 Допустимые формы результата
+
+При описании `read_providers` важно явно различать не только вход, но и виды
+результата.
+
+Обычная практическая картина выглядит так:
+
+1. обычное значение:
+   провайдер вернул данные, которые потребитель и ожидал получить;
+2. `nil`:
+   это допустимый бизнес-результат, например объект не найден;
+3. error-map:
+   это ожидаемая прикладная ошибка, например `:invalid-arg`;
+4. исключение:
+   это сбой или отказ, который не должен маскироваться под обычный результат.
+
+Если `nil` допустим, это должно быть прямо отражено в `output` или
+`expected_output`.
+Если error-map возвращается значением, это должно быть видно из
+`error_behavior.return_error_shape`.
+Если исключения разрешены контрактом, это должно быть видно из
+`error_behavior.throw_types`.
+
+Короткий пример смешанного поведения:
+
+```clojure
+;; валидный вызов, данные найдены
+{:id "u-alice" :login "alice"}
+
+;; валидный вызов, но запись не найдена
+nil
+
+;; ожидаемая прикладная ошибка
+{:code :invalid-arg
+ :message "user-id must be non-empty string"
+ :retryable? false}
+
+;; сбой зависимости
+(throw (ex-info "Provider unavailable" {:reason :unavailable}))
+```
+
+### 16.3 Коды ошибок provider (`errors`)
 
 Минимально рекомендуется использовать коды:
 
 - `invalid-arg` - вход невалиден, повтор без изменения входа бессмысленен.
-- `not-found` - сущность по ключу не найдена.
+- `not-found` - сущность по ключу не найдена, если проект предпочитает код ошибки вместо `nil`.
 - `forbidden` - доступ к данным запрещен политикой безопасности.
-- `timeout` - источник не успел ответить в SLA-время.
+- `timeout` - источник не успел ответить за ожидаемое время.
 - `unavailable` - источник временно недоступен.
 - `internal` - внутренняя ошибка provider.
 
 Проект может вводить дополнительные доменные коды, но базовые коды должны
 сохранять одинаковую семантику между модулями.
 
-### 16.3 Контракт поведения provider при ошибках и падениях
+### 16.4 Контракт поведения provider при ошибках и сбоях
 
 В контракте обязательно фиксируется `error_behavior.mode`.
-Библиотека допускает все три режима и не ограничивает разработчика одним подходом.
+Спецификация допускает все три режима и не навязывает один универсальный подход.
 
 1. `return`:
-- provider возвращает ошибку значением согласно `return_error_shape`.
-- пример:
-
-```clojure
-{:ok? false
- :error {:code :invalid-arg
-         :message "user-id must be string"
-         :retryable? false}}
-```
-
+   провайдер возвращает ошибку значением согласно `return_error_shape`.
 2. `throw`:
-- provider сигнализирует ошибку через исключения из `throw_types`.
-- consumer обязан иметь policy обработки исключений.
-
+   провайдер сигнализирует ошибку через исключения из `throw_types`.
 3. `mixed`:
-- часть ошибок возвращается значением, часть сигнализируется исключениями;
-- разделение обязано быть описано текстом в `summary` или соседнем пояснении
-  модуля, чтобы consumer корректно обработал оба канала.
+   часть ошибок возвращается значением, а часть передается через исключения.
 
-Практически рекомендуется читать поведение так:
+Практическая рекомендация:
 
-1. успешный результат - нормальное значение provider;
-2. `nil` - допустимый business result, если сущность не найдена и это прямо
-   разрешено `output`;
-3. error-map - ожидаемая ошибка вызова, например `invalid-arg`;
-4. исключение - операционный сбой или иной контрактно допустимый failure path.
+1. если ошибка ожидаема и полезна потребителю как часть обычного сценария,
+   возвращайте ее значением;
+2. если ошибка означает сбой зависимости или потерю обычных гарантий, передавайте
+   ее через исключение;
+3. если используется `mixed`, из контракта должно быть ясно, какие ошибки
+   возвращаются значением, а какие могут быть выброшены.
 
-Пример mixed behavior:
+Короткий пример режима `mixed`:
 
 ```clojure
-;; success
-{:id "u-alice" :login "alice"}
-
-;; business not-found
-nil
-
-;; invalid input
+;; ошибка уровня аргументов
 {:code :invalid-arg
- :message "user-id must be non-empty string"
+ :message "user-id must be string"
  :retryable? false}
 
-;; operational failure
+;; отсутствие данных как нормальный бизнес-результат
+nil
+
+;; отказ внешней зависимости
 (throw (ex-info "Provider unavailable" {:reason :unavailable}))
 ```
 
-### 16.4 Правила для `requires`
+### 16.5 Правила для `requires`
 
-1. `requires` трактуются как обязательные зависимости по определению.
-2. `provider_id` в `requires` ОБЯЗАТЕЛЕН.
-3. Если required provider отсутствует, приложение должно завершить startup-check
-   с fail-fast ошибкой (`assert-requirements!`).
+1. `requires` по смыслу описывают обязательные внешние зависимости.
+2. `provider_id` в `requires` обязателен.
+3. Если обязательный provider отсутствует, приложение должно завершить
+   startup-check ошибкой через `assert-requirements!`.
 
-Рекомендуемый practical shape `requires`:
+Канонический шаблон `requires`:
 
 ```yaml
 read_providers:
   requires:
     - provider_id: "accounts/get-user-by-id"
-      summary: "Получить пользователя перед созданием бронирования"
+      summary: "Проверить пользователя перед созданием бронирования"
       input:
         type: map
         required: [user-id]
@@ -514,20 +555,25 @@ read_providers:
           user-id: {type: string}
       expected_output:
         type: map-or-nil
-        description: "User record или nil, если пользователь не найден"
+        description: "Пользователь или nil, если пользователь не найден"
 ```
 
 Рекомендуется:
 
 1. указывать `summary`, чтобы назначение зависимости было понятно без чтения
    кода;
-2. указывать `input`, чтобы consumer не додумывал форму вызова;
+2. указывать `input`, чтобы потребитель не додумывал форму вызова;
 3. указывать `expected_output`, чтобы было ясно, считается ли `nil` допустимым
-   business result;
+   результатом;
 4. при важной зависимости кратко отражать ожидаемую семантику ошибок в
-   `summary`, `narrative.dependencies` или соседнем пояснении.
+   `summary`, `narrative.dependencies` или в соседнем пояснении.
 
-Полезная опорная пара `provides` -> `requires`:
+### 16.6 Полный опорный пример: владелец и потребитель
+
+Ниже пара примеров уровня `reference-app`.
+Они показывают не абстрактную схему, а типичный рабочий случай:
+модуль-владелец описывает провайдер, а модуль-потребитель фиксирует ожидания по
+тому же `provider_id`.
 
 ```yaml
 # accounts contract
@@ -542,10 +588,18 @@ read_providers:
           user-id: {type: string}
       output:
         type: map-or-nil
-        description: "User record или nil"
+        description: "Пользователь или nil"
       errors: ["invalid-arg", "unavailable", "internal"]
       error_behavior:
         mode: "mixed"
+        return_error_shape:
+          type: map
+          required: [code]
+          properties:
+            code: {type: keyword}
+            message: {type: string}
+            retryable?: {type: boolean}
+        throw_types: ["clojure.lang.ExceptionInfo"]
 ```
 
 ```yaml
@@ -561,5 +615,15 @@ read_providers:
           user-id: {type: string}
       expected_output:
         type: map-or-nil
-        description: "User record или nil"
+        description: "Пользователь или nil"
 ```
+
+Отдельно важно:
+
+1. `accounts/get-user-by-id` в коде модуля-владельца и в контракте потребителя
+   должен совпадать буквально;
+2. если провайдер начал возвращать новую карту ошибки или перестал допускать `nil`,
+   код и контракт должны обновляться вместе;
+3. если код уровня приложения вызывает провайдер напрямую, например через
+   `:accounts/get-user-by-login`, этот провайдер тоже должен быть описан в
+   `provides`, а не оставаться "скрытым" знанием из кода.

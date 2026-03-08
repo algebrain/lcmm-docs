@@ -224,30 +224,21 @@ Boundary rules:
 4. missing required provider должен обнаруживаться до старта HTTP;
 5. registry не заменяет event-bus и не предназначен для реактивных процессов.
 
-## 6. Минимальный end-to-end пример
+## 6. Обычная картина использования
 
-```clojure
-(ns app.main
-  (:require [lcmm.read-provider-registry :as rpr]))
+Если смотреть не на отдельные функции, а на живое приложение, то обычная схема
+выглядит так:
 
-(def registry (rpr/make-registry))
+1. приложение создает один общий registry;
+2. модули-владельцы данных регистрируют свои провайдеры;
+3. модуль-потребитель объявляет обязательные зависимости;
+4. корень композиции вызывает `assert-requirements!` до старта HTTP;
+5. провайдер затем используется либо в модуле-потребителе, либо в обработчике
+   уровня приложения.
 
-;; users module (provider owner)
-(rpr/register-provider! registry
-  {:provider-id :users/get-user-by-id
-   :module :users
-   :provider-fn (fn [{:keys [user-id]}]
-                  {:ok? true :value {:id user-id}})})
+Именно эта картина и должна оставаться в голове при чтении API ниже.
 
-;; orders module (consumer)
-(rpr/declare-requirements! registry :orders #{:users/get-user-by-id})
-(def get-user (rpr/require-provider registry :users/get-user-by-id))
-
-;; app startup-check
-(rpr/assert-requirements! registry)
-```
-
-Более реалистичный пример уровня `reference-app`:
+## 7. Минимальный сквозной пример
 
 ```clojure
 (ns app.main
@@ -256,7 +247,14 @@ Boundary rules:
 
 (def registry (rpr/make-registry))
 
-;; accounts module
+;; модуль accounts
+(rpr/register-provider! registry
+  {:provider-id :accounts/get-user-by-id
+   :module :accounts
+   :provider-fn (fn [{:keys [user-id]}]
+                  (when (= user-id "u-alice")
+                    {:id "u-alice" :login "alice"}))})
+
 (rpr/register-provider! registry
   {:provider-id :accounts/get-user-by-login
    :module :accounts
@@ -264,33 +262,50 @@ Boundary rules:
                   (when (= login "alice")
                     {:id "u-alice" :login "alice"}))})
 
-;; booking module
+;; модуль catalog
+(rpr/register-provider! registry
+  {:provider-id :catalog/get-slot-by-id
+   :module :catalog
+   :provider-fn (fn [{:keys [slot-id]}]
+                  (when (= slot-id "slot-09-00")
+                    {:id slot-id :status "open"}))})
+
+;; модуль booking
 (rpr/declare-requirements! registry
   :booking
   #{:accounts/get-user-by-id :catalog/get-slot-by-id})
 
-;; app startup-check
+;; проверка на старте в корне композиции приложения
 (rpr/assert-requirements! registry)
 
-;; app-level handler
+;; обработчик уровня приложения
 (defn install-security-routes! [app-router]
   (let [get-user-by-login (rpr/require-provider registry :accounts/get-user-by-login)]
     (router/add-route! app-router
                        :get "/auth/demo-login"
                        (fn [req]
-                         (if-let [user (get-user-by-login {:login (get-in req [:query-params "login"])})]
-                           {:status 200 :body (pr-str user)}
-                           {:status 401 :body "invalid credentials"})))))
+                          (if-let [user (get-user-by-login {:login (get-in req [:query-params "login"])})]
+                            {:status 200 :body (pr-str user)}
+                            {:status 401 :body "invalid credentials"})))))
 ```
 
-## 7. Связь с контрактами модулей
+Что показывает этот пример:
 
-`REGISTRY.md` описывает runtime API.
-Как фиксировать ожидания по provider в YAML-контрактах модулей, описано в
-[`CONTRACT.md`](./CONTRACT.md), section `read_providers`.
+1. один модуль может регистрировать несколько провайдеров;
+2. провайдеры могут принадлежать разным модулям-владельцам;
+3. модуль-потребитель объявляет именно те `provider_id`, которые ему нужны;
+4. `assert-requirements!` живет в приложении и вызывается до старта HTTP;
+5. приложение тоже может использовать провайдер напрямую, если это сценарий
+   уровня приложения, как в `demo-login`.
+
+## 8. Связь с контрактами модулей
+
+`REGISTRY.md` описывает программный интерфейс.
+Как фиксировать ожидания по провайдерам в YAML-контрактах модулей, описано в
+[`CONTRACT.md`](./CONTRACT.md), в разделе `read_providers`.
 
 Практическое правило:
 
 1. `provider_id` в коде и контракте должен совпадать;
-2. shape входа и результата не должен расходиться между runtime и YAML;
-3. если поведение provider меняется, код и контракт обновляются вместе.
+2. форма входа и результата не должна расходиться между кодом и YAML;
+3. если поведение провайдера меняется, код и контракт обновляются вместе.

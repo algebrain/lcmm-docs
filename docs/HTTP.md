@@ -1,11 +1,11 @@
 # Документация по API: HTTP (`lcmm-http`)
 
 Этот документ описывает публичный API `lcmm-http` и быстрый старт для двух аудиторий:
-1. `module-level` разработчики;
-2. `app-level` разработчики.
+1. разработчиков модулей;
+2. разработчиков приложения.
 
-За полный app-level composition порядок вокруг `router`, `observe`, `guard` и middleware отвечает [`APP_COMPOSITION.md`](./APP_COMPOSITION.md). Этот документ остаётся HTTP-focused.
-Для сквозного walkthrough по correlation и causation от HTTP до reactive flow см. [`TRACE_FLOW.md`](./TRACE_FLOW.md).
+За полный app-level composition порядок вокруг `router`, `observe`, `guard` и middleware отвечает [`APP_COMPOSITION.md`](./APP_COMPOSITION.md). Этот документ остается сосредоточенным именно на HTTP.
+Для сквозного разбора пути от HTTP до событий, логов и аудита см. [`TRACE_FLOW.md`](./TRACE_FLOW.md). Эта тема подробно раскрывается именно там.
 
 ## 1. Назначение
 

@@ -6,17 +6,17 @@
 **Важно:** `lcmm-guard` применяется на уровне приложения (app-level) в архитектуре LCMM.
 Он не предназначен для встраивания внутрь отдельных бизнес-модулей (module-level).
 
-## 0. 5-minute path
+## 0. Короткий путь
 
-Use this if you want to get running quickly:
+Если нужен быстрый рабочий вход в тему, держите в голове такой путь:
 
-1. Add dependency in `deps.edn`.
-2. Build guard with `make-guard`.
-3. Call `evaluate-request!` in app-level middleware before business handlers.
-4. Map `:action` to HTTP response (`allow` -> continue, `rate-limited/banned` -> block, `degraded-*` by policy).
-5. Forward `:events` to logging/monitoring.
+1. добавьте зависимость в `deps.edn`;
+2. соберите guard через `make-guard`;
+3. вызывайте `evaluate-request!` в app-level middleware до бизнес-обработчиков;
+4. переведите `:action` в обычный HTTP-ответ;
+5. отправляйте `:events` в логирование и мониторинг.
 
-Strict API contracts are documented in [GUARD_API](./GUARD_API.md).
+Строгий контракт API описан в [GUARD_API](./GUARD_API.md).
 
 ## 1. Что это за библиотека
 
@@ -80,6 +80,18 @@ Strict API contracts are documented in [GUARD_API](./GUARD_API.md).
 ```
 
 Именно такую схему удобно держать в голове при чтении остального документа.
+
+### 2.1 Кто за что отвечает в этой схеме
+
+Чтобы не смешивать роли, полезно держать в голове простое разделение:
+
+1. HTTP-слой добавляет `correlation-id`, оформляет ошибки и управляет общими
+   middleware;
+2. слой проверки входа и учетных данных определяет, что именно произошло в
+   запросе;
+3. `lcmm-guard` решает, пропускать запрос, ограничивать его или временно
+   блокировать IP;
+4. бизнес-обработчик получает уже отфильтрованный запрос и не должен сам считать попытки перебора или заниматься IP-блокировками.
 
 ## 3. Когда использовать
 

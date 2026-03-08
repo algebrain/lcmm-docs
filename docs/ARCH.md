@@ -3,7 +3,7 @@
 Этот документ определяет архитектурный стиль системы, построенной на основе `event-bus`.
 
 Практический app-level composition root, который собирает эту архитектуру в реальное приложение, описан в [`APP_COMPOSITION.md`](./APP_COMPOSITION.md).
-Сквозной walkthrough по correlation и causation от HTTP до reactive flow описан в [`TRACE_FLOW.md`](./TRACE_FLOW.md).
+Сквозной разбор пути от HTTP до реактивной цепочки, логов и аудита описан в [`TRACE_FLOW.md`](./TRACE_FLOW.md). Для этой темы именно он остается главным документом.
 
 ## 1. Разделение Ответственности (CQRS-like)
 
