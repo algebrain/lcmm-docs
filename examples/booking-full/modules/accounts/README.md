@@ -1,11 +1,11 @@
-# accounts
+# `accounts`
 
-Demo module for user and role data in `booking-full`.
+Module for user and role data.
 
 ## Responsibilities
 
-1. Provide compact user records for browser-first manual checks.
-2. Expose sync-read providers for downstream modules.
+1. Provide compact user records.
+2. Expose sync-read providers.
 3. Demonstrate module storage startup rules:
    - external-managed `:db`
    - self-managed SQLite fallback
@@ -20,7 +20,7 @@ Demo module for user and role data in `booking-full`.
 1. `GET /accounts/me?user-id=<user-id>`
 2. `GET /accounts/users/:user_id`
 
-## Browser Examples
+## Examples
 
 1. `http://localhost:3006/accounts/me?user-id=u-alice`
 2. `http://localhost:3006/accounts/users/u-admin`
@@ -28,5 +28,5 @@ Demo module for user and role data in `booking-full`.
 ## Test
 
 ```bash
-clj -M:test
+bb test.bb
 ```

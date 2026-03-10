@@ -1,10 +1,10 @@
-# catalog
+# `catalog`
 
-Demo module for available booking slots in `booking-full`.
+Module for available booking slots.
 
 ## Responsibilities
 
-1. Provide browser-first read endpoints for slot checks.
+1. Provide read endpoints for slot checks.
 2. Expose sync-read provider for downstream booking validation.
 3. Demonstrate module storage startup rules:
    - external-managed `:db`
@@ -20,7 +20,7 @@ Demo module for available booking slots in `booking-full`.
 2. `GET /catalog/slots?status=open`
 3. `GET /catalog/slots/:slot_id`
 
-## Browser Examples
+## Examples
 
 1. `http://localhost:3006/catalog/slots`
 2. `http://localhost:3006/catalog/slots?status=open`
@@ -29,5 +29,5 @@ Demo module for available booking slots in `booking-full`.
 ## Test
 
 ```bash
-clj -M:test
+bb test.bb
 ```
