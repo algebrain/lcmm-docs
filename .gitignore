@@ -21,5 +21,7 @@ plan-*.md
 *.local.*
 .drafts
 .mem26
+.data
+.samples
 
 AGENTS.md
