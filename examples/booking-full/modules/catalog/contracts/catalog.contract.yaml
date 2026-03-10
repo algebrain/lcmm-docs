@@ -1,0 +1,86 @@
+contract_version: "1.0"
+module:
+  name: "catalog"
+  owner: "booking-full"
+  summary: "Available booking slots exposed via HTTP and read-provider registry"
+
+http:
+  operations:
+    - operation_id: "list_slots"
+      method: "GET"
+      path: "/catalog/slots"
+      summary: "List catalog slots with optional status filter"
+      x-idempotent: true
+      x-idempotency-key: "method + ':' + path"
+      x-transactional: "none"
+      request:
+        query:
+          type: object
+          properties:
+            status: {type: string}
+      responses:
+        "200": {description: "List of slots"}
+
+    - operation_id: "get_slot_by_id"
+      method: "GET"
+      path: "/catalog/slots/{slot_id}"
+      summary: "Return slot by id"
+      x-idempotent: true
+      x-idempotency-key: "path.slot_id"
+      x-transactional: "none"
+      request:
+        path:
+          type: object
+          required: [slot_id]
+          properties:
+            slot_id: {type: string}
+      responses:
+        "200": {description: "Slot found"}
+        "404": {description: "Slot not found"}
+
+read_providers:
+  provides:
+    - provider_id: "catalog/get-slot-by-id"
+      summary: "Return slot by id for booking validation"
+      input:
+        type: map
+        required: [slot-id]
+        properties:
+          slot-id: {type: string}
+      output:
+        type: map-or-nil
+        description: "Slot record or nil when slot does not exist"
+      errors: ["invalid-arg", "unavailable", "internal"]
+      error_behavior:
+        mode: "mixed"
+        return_error_shape:
+          type: map
+          required: [code]
+          properties:
+            code: {type: keyword}
+            message: {type: string}
+            retryable?: {type: boolean}
+        throw_types: ["clojure.lang.ExceptionInfo"]
+
+types:
+  schemas:
+    slot_id: {type: string}
+    slot_status: {type: string}
+
+behavior:
+  defaults:
+    x-timeout-ms: 1000
+    x-failure-mode: "fail-fast"
+
+narrative:
+  purpose: "Own available slots and provide browser-first read access plus sync-read for booking"
+  scenarios:
+    - "Browser user opens /catalog/slots"
+    - "Browser user opens /catalog/slots?status=open"
+    - "Browser user opens /catalog/slots/slot-09-00"
+    - "Booking module validates slot by id through read-provider registry"
+  dependencies:
+    - "sqlite storage or external db resource"
+
+compatibility:
+  module_contract_version: "0.1.0"

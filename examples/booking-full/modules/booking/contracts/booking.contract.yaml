@@ -1,0 +1,148 @@
+contract_version: "1.0"
+module:
+  name: "booking"
+  owner: "booking-full"
+  summary: "Create and read bookings through provider-based sync-read and event publication"
+
+http:
+  operations:
+    - operation_id: "create_booking_action"
+      method: "GET"
+      path: "/bookings/actions/create"
+      summary: "Create booking for slot-id and user-id in browser-first demo flow"
+      x-idempotent: false
+      x-transactional: "none"
+      x-emits: ["booking/create-requested", "booking/created", "booking/rejected"]
+      request:
+        query:
+          type: object
+          required: [slot-id, user-id]
+          properties:
+            slot-id: {type: string}
+            user-id: {type: string}
+      responses:
+        "200": {description: "Booking created"}
+        "400": {description: "slot-id or user-id is invalid or missing"}
+        "404": {description: "User or slot not found"}
+        "409": {description: "Slot is not open"}
+
+    - operation_id: "get_booking_by_id"
+      method: "GET"
+      path: "/bookings/{booking_id}"
+      summary: "Return booking by id"
+      x-idempotent: true
+      x-idempotency-key: "path.booking_id"
+      x-transactional: "none"
+      request:
+        path:
+          type: object
+          required: [booking_id]
+          properties:
+            booking_id: {type: string}
+      responses:
+        "200": {description: "Booking found"}
+        "404": {description: "Booking not found"}
+
+    - operation_id: "list_bookings"
+      method: "GET"
+      path: "/bookings"
+      summary: "List bookings, optionally filtered by user-id"
+      x-idempotent: true
+      x-idempotency-key: "method + ':' + path + ':' + (query.user-id || '')"
+      x-transactional: "none"
+      request:
+        query:
+          type: object
+          properties:
+            user-id: {type: string}
+      responses:
+        "200": {description: "List of bookings"}
+
+events:
+  publishes:
+    - event: "booking/create-requested"
+      summary: "Booking creation has been requested from HTTP flow"
+      x-owner-module: "booking"
+      payload:
+        type: object
+        required: [slot-id, user-id]
+        properties:
+          slot-id: {type: string}
+          user-id: {type: string}
+
+    - event: "booking/created"
+      summary: "Booking was successfully created"
+      x-owner-module: "booking"
+      payload:
+        type: object
+        required: [booking-id, slot-id, user-id]
+        properties:
+          booking-id: {type: string, format: uuid}
+          slot-id: {type: string}
+          user-id: {type: string}
+
+    - event: "booking/rejected"
+      summary: "Booking creation was rejected by business checks"
+      x-owner-module: "booking"
+      payload:
+        type: object
+        required: [slot-id, user-id, reason]
+        properties:
+          slot-id: {type: string}
+          user-id: {type: string}
+          reason: {type: string}
+
+read_providers:
+  requires:
+    - provider_id: "accounts/get-user-by-id"
+      summary: "Resolve booking owner before creating booking"
+      input:
+        type: map
+        required: [user-id]
+        properties:
+          user-id: {type: string}
+      expected_output:
+        type: map-or-nil
+        description: "User record or nil when user does not exist"
+
+    - provider_id: "catalog/get-slot-by-id"
+      summary: "Resolve slot and check whether it is open"
+      input:
+        type: map
+        required: [slot-id]
+        properties:
+          slot-id: {type: string}
+      expected_output:
+        type: map-or-nil
+        description: "Slot record or nil when slot does not exist"
+
+types:
+  schemas:
+    booking_id: {type: string, format: uuid}
+    slot_id: {type: string}
+    user_id: {type: string}
+    booking_status: {type: string}
+    rejection_reason: {type: string}
+
+behavior:
+  defaults:
+    x-timeout-ms: 1000
+    x-failure-mode: "fail-fast"
+
+narrative:
+  purpose: "Own booking records and demonstrate critical path plus provider-based sync-read"
+  scenarios:
+    - "Browser user opens /bookings/actions/create?slot-id=slot-09-00&user-id=u-alice"
+    - "Module validates user through accounts provider"
+    - "Module validates slot through catalog provider"
+    - "Successful create persists booking and publishes booking/created"
+    - "Rejected create publishes booking/rejected with reason"
+    - "Browser user opens /bookings/{booking_id} or /bookings?user-id=u-alice"
+  dependencies:
+    - "accounts contract"
+    - "catalog contract"
+    - "sqlite storage or external db resource"
+    - "event-bus schema registry for booking/* events"
+
+compatibility:
+  module_contract_version: "0.1.0"

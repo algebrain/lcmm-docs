@@ -1,0 +1,29 @@
+[app]
+name = "booking-full"
+
+[http]
+port = 3006
+expose_correlation_headers = true
+
+[guard]
+mode = "fail-open"
+rate_limit = 60
+rate_window_sec = 60
+login_window_sec = 300
+login_max_failures = 20
+ban_ttl_sec = 900
+
+[accounts]
+db_path = "./data/accounts.db"
+
+[catalog]
+db_path = "./data/catalog.db"
+
+[booking]
+db_path = "./data/booking.db"
+
+[notify]
+db_path = "./data/notify.db"
+
+[audit]
+db_path = "./data/audit.db"

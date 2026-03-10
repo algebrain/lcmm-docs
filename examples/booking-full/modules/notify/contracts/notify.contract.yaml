@@ -1,0 +1,72 @@
+contract_version: "1.0"
+module:
+  name: "notify"
+  owner: "booking-full"
+  summary: "Reactive notifications derived from booking events"
+
+http:
+  operations:
+    - operation_id: "list_notifications"
+      method: "GET"
+      path: "/notifications"
+      summary: "List stored notifications for manual verification"
+      x-idempotent: true
+      x-idempotency-key: "method + ':' + path"
+      x-transactional: "none"
+      request:
+        query:
+          type: object
+      responses:
+        "200": {description: "List of notifications"}
+
+events:
+  publishes:
+    - event: "notify/booking-created"
+      summary: "Derived notification event after successful booking"
+      x-owner-module: "notify"
+      payload:
+        type: object
+        required: [booking-id, message]
+        properties:
+          booking-id: {type: string, format: uuid}
+          message: {type: string}
+
+  subscribes:
+    - event: "booking/created"
+      summary: "Create notification after booking is created"
+      x-idempotent: false
+      x-transactional: "none"
+      x-emits: ["notify/booking-created"]
+      x-consumes: ["booking/created"]
+      payload:
+        type: object
+        required: [booking-id, slot-id, user-id]
+        properties:
+          booking-id: {type: string, format: uuid}
+          slot-id: {type: string}
+          user-id: {type: string}
+
+types:
+  schemas:
+    notification_id: {type: string, format: uuid}
+    booking_id: {type: string, format: uuid}
+    notification_message: {type: string}
+
+behavior:
+  defaults:
+    x-timeout-ms: 1000
+    x-failure-mode: "fail-fast"
+
+narrative:
+  purpose: "Demonstrate pure reactive side effects and derived event publication with parent-envelope"
+  scenarios:
+    - "Booking module publishes booking/created"
+    - "Notify stores notification record"
+    - "Notify publishes notify/booking-created with parent-envelope"
+    - "Browser user opens /notifications to inspect reactive results"
+  dependencies:
+    - "booking contract"
+    - "sqlite storage or external db resource"
+
+compatibility:
+  module_contract_version: "0.1.0"

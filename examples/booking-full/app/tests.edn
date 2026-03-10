@@ -1,0 +1,4 @@
+#kaocha/v1
+ {:kaocha.plugin.stacktrace/keep-cause? true
+  :kaocha/stacktrace-filters [:common-clojure :common-java]
+  :kaocha/test-paths ["test/booking_full"]}
