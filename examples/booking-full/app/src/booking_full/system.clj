@@ -5,6 +5,7 @@
             [lcmm.observe.http :as observe.http]
             [lcmm.read-provider-registry :as rpr]
             [lcmm.router :as router]
+            [ring.middleware.params :refer [wrap-params]]
             [accounts.core :as accounts]
             [audit.core :as audit]
             [booking.core :as booking]
@@ -124,6 +125,7 @@
              app-handler (-> observed-handler
                              (security/wrap-guard guard-instance logger)
                              (logging/wrap-request-logging logger)
+                             wrap-params
                              (http/wrap-correlation-context {:expose-headers? (boolean (config/config-value app-config "http.expose_correlation_headers" true))})
                              (http/wrap-error-contract {}))
              system-map {:config app-config

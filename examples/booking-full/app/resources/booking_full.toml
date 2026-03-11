@@ -10,7 +10,7 @@ mode = "fail-open"
 rate_limit = 60
 rate_window_sec = 60
 login_window_sec = 300
-login_max_failures = 20
+login_max_failures = 2
 ban_ttl_sec = 900
 
 [accounts]

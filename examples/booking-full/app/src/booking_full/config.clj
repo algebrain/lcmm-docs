@@ -9,8 +9,8 @@
     "guard.mode"
     "guard.rate_limit"
     "guard.rate_window_sec"
-    "guard.login.window_sec"
-    "guard.login.max_failures"
+    "guard.login_window_sec"
+    "guard.login_max_failures"
     "guard.ban_ttl_sec"
     "accounts.db_path"
     "catalog.db_path"
@@ -31,8 +31,8 @@
    "http.expose_correlation_headers" :bool
    "guard.rate_limit" :int
    "guard.rate_window_sec" :int
-   "guard.login.window_sec" :int
-   "guard.login.max_failures" :int
+   "guard.login_window_sec" :int
+   "guard.login_max_failures" :int
    "guard.ban_ttl_sec" :int})
 
 (defn load-app-config [logger]

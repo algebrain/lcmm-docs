@@ -2,6 +2,7 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [booking-full.logging :as logging]
+            [booking-full.system :as system]
             [booking-full.test-support :as support]))
 
 (deftest app-skeleton-serves-health-ready-and-module-routes-test
@@ -61,6 +62,65 @@
           (is (= 429 (:status banned)))
           (is (= 200 (:status unban)))
           (is (= 200 (:status success))))
+        (finally
+          (doseq [resource test-db-resources]
+            (support/cleanup-temp! resource)))))))
+
+(deftest demo-config-guard-threshold-is-applied-test
+  (testing "system uses guard threshold from booking_full.toml when no test override is provided"
+    (let [accounts-db (support/temp-db-path "booking-full-demo-accounts-" "accounts.db")
+          catalog-db (support/temp-db-path "booking-full-demo-catalog-" "catalog.db")
+          booking-db (support/temp-db-path "booking-full-demo-booking-" "booking.db")
+          notify-db (support/temp-db-path "booking-full-demo-notify-" "notify.db")
+          audit-db (support/temp-db-path "booking-full-demo-audit-" "audit.db")
+          resources [accounts-db catalog-db booking-db notify-db audit-db]
+          {:keys [handler]} (system/make-system {"accounts.db_path" (:path accounts-db)
+                                                 "catalog.db_path" (:path catalog-db)
+                                                 "booking.db_path" (:path booking-db)
+                                                 "notify.db_path" (:path notify-db)
+                                                 "audit.db_path" (:path audit-db)}
+                                                {:startup-mode :reset})]
+      (try
+        (let [failed-1 (handler (support/req "/auth/demo-login" {"login" "missing"} "203.0.113.10"))
+              failed-2 (handler (support/req "/auth/demo-login" {"login" "missing"} "203.0.113.10"))
+              banned (handler (support/req "/auth/demo-login" {"login" "alice"} "203.0.113.10"))]
+          (is (= 401 (:status failed-1)))
+          (is (= 429 (:status failed-2)))
+          (is (= 429 (:status banned))))
+        (finally
+          (doseq [resource resources]
+            (support/cleanup-temp! resource)))))))
+
+(deftest loopback-ip-alias-unban-test
+  (testing "manual unban accepts 127.0.0.1 even when localhost requests arrive as IPv6 loopback"
+    (let [{:keys [handler test-db-resources]} (support/make-test-system)]
+      (try
+        (let [failed-1 (handler (support/req "/auth/demo-login" {"login" "missing"} "::1"))
+              failed-2 (handler (support/req "/auth/demo-login" {"login" "missing"} "::1"))
+              unban (handler (support/req "/ops/guard/unban" {"ip" "127.0.0.1"} "198.51.100.200"))
+              success (handler (support/req "/auth/demo-login" {"login" "alice"} "::1"))]
+          (is (= 401 (:status failed-1)))
+          (is (= 429 (:status failed-2)))
+          (is (= 200 (:status unban)))
+          (is (= 200 (:status success))))
+        (finally
+          (doseq [resource test-db-resources]
+            (support/cleanup-temp! resource)))))))
+
+(deftest unban-clears-guard-counters-for-repeatable-manual-scenario-test
+  (testing "after manual unban the next failed login starts from 401 again instead of immediate re-ban"
+    (let [{:keys [handler test-db-resources]} (support/make-test-system)]
+      (try
+        (let [failed-1 (handler (support/req "/auth/demo-login" {"login" "missing"} "127.0.0.1"))
+              failed-2 (handler (support/req "/auth/demo-login" {"login" "missing"} "127.0.0.1"))
+              unban (handler (support/req "/ops/guard/unban" {"ip" "127.0.0.1"} "198.51.100.200"))
+              failed-after-unban (handler (support/req "/auth/demo-login" {"login" "missing"} "127.0.0.1"))
+              second-failed-after-unban (handler (support/req "/auth/demo-login" {"login" "missing"} "127.0.0.1"))]
+          (is (= 401 (:status failed-1)))
+          (is (= 429 (:status failed-2)))
+          (is (= 200 (:status unban)))
+          (is (= 401 (:status failed-after-unban)))
+          (is (= 429 (:status second-failed-after-unban))))
         (finally
           (doseq [resource test-db-resources]
             (support/cleanup-temp! resource)))))))

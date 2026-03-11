@@ -27,8 +27,8 @@
                                          "notify.db_path" (:path notify-db)
                                          "audit.db_path" (:path audit-db)
                                          "guard.rate_limit" 100
-                                         "guard.login.max_failures" 2
-                                         "guard.login.window_sec" 60
+                                         "guard.login_max_failures" 2
+                                         "guard.login_window_sec" 60
                                          "guard.ban_ttl_sec" 600}
                                         {:logger logger
                                          :startup-mode startup-mode})]
@@ -43,8 +43,8 @@
                        "notify.db_path" (:path (nth db-resources 3))
                        "audit.db_path" (:path (nth db-resources 4))
                        "guard.rate_limit" 100
-                       "guard.login.max_failures" 2
-                       "guard.login.window_sec" 60
+                       "guard.login_max_failures" 2
+                       "guard.login_window_sec" 60
                        "guard.ban_ttl_sec" 600}
                       {:startup-mode startup-mode}))
 
