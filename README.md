@@ -1,5 +1,7 @@
 # LCMM Documentation Draft
 
+`LCMM` (`Loosely Coupled Modular Monolith`) is an architectural approach to building a modular monolith with weak coupling between modules.
+
 This repository is a working documentation space for LCMM: a way to build a modular monolith with explicit boundaries, message-based cooperation, and application assembly that remains readable as the system grows.
 
 The main value of LCMM is not novelty for its own sake. It is an attempt to keep a growing codebase understandable by forcing important architectural decisions into the open: who owns data, how modules talk to each other, where synchronous reads are allowed, where side effects belong, and how the whole application is assembled without hidden coupling.
