@@ -12,15 +12,14 @@ What is here:
 - documentation drafts in `docs/`;
 - supporting material for runnable examples in the repository.
 
-## Reference App
+## Examples
 
-This repository also contains `reference-app`, a runnable LCMM example.
+This repository contains two runnable LCMM examples in `examples/`:
 
-The composition root lives in `reference-app/app`.
-That example is meant to be started locally and then checked through browser-safe `GET` endpoints.
+- [examples/booking-simple](examples/booking-simple/README.md) shows a small single-project example with a minimal reactive flow;
+- [examples/booking-full](examples/booking-full/README.md) shows a fuller modular monolith assembled from an application project and several modules.
 
-For the actual run modes and startup behavior, see:
-- [reference-app/app/README.md](reference-app/app/README.md)
+Both examples are meant to be started locally and then checked through browser-safe `GET` endpoints.
 
 **Minimal developer setup**
 - `Java 25` (required for virtual threads support)
