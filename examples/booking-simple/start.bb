@@ -1,7 +1,8 @@
 #!/usr/bin/env bb
 (ns start
   (:require [babashka.process :as p]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clojure.string :as str]))
 
 (def reset-color "\u001b[0m")
 (def title-color "\u001b[1;36m")
@@ -16,13 +17,59 @@
   (.getParentFile (io/file *file*)))
 
 (defn- usage []
-  (str "Usage: bb start.bb [--help]"))
+  (str/join
+   \newline
+   ["Usage: bb start.bb [--reset|--continue] [--port=<N>] [--help]"
+    ""
+    "Modes:"
+    "  --reset      Start from a clean local SQLite state (default)"
+    "  --continue   Keep existing local SQLite data"
+    ""
+    "Options:"
+    "  --port=<N>   Override HTTP port"
+    "  --help       Show this help"]))
 
-(defn- banner []
+(defn- parse-port [value]
+  (try
+    (Long/parseLong value)
+    (catch Throwable _
+      nil)))
+
+(defn- parse-args [args]
+  (reduce (fn [acc arg]
+            (cond
+              (= arg "--reset")
+              (assoc acc :mode :reset)
+
+              (= arg "--continue")
+              (assoc acc :mode :continue)
+
+              (str/starts-with? arg "--port=")
+              (if-let [port (parse-port (subs arg (count "--port=")))]
+                (assoc acc :port port)
+                (throw (ex-info "Invalid port value"
+                                {:reason :invalid-port
+                                 :arg arg})))
+
+              (= arg "--help")
+              (assoc acc :help? true)
+
+              :else
+              (throw (ex-info "Unknown argument"
+                              {:reason :unknown-arg
+                               :arg arg}))))
+          {:mode :reset
+           :port nil
+           :help? false}
+          args))
+
+(defn- banner [mode port]
   (println (str title-color "BOOKING-SIMPLE START" reset-color))
   (println (str info-color "STARTED AT " (now-hh-mm) reset-color))
+  (println (str "Mode: " (name mode)))
+  (println (str "Port: " (or port 3006)))
   (println "App: booking-simple")
-  (println "Open in browser: http://localhost:3006")
+  (println (str "Open in browser: http://localhost:" (or port 3006)))
   (println "Config: ./resources/booking_config.toml"))
 
 (defn- destroy-tree! [^Process process]
@@ -35,11 +82,14 @@
       (.destroy process))))
 
 (defn -main [& args]
-  (if (= ["--help"] (vec args))
+  (let [{:keys [mode port help?]} (parse-args args)]
+    (if help?
     (println (usage))
     (let [dir (.getAbsolutePath (script-dir))
+          command (vec (concat ["clj" "-M:run-main" "--" (str "--" (name mode))]
+                               (when port [(str "--port=" port)])))
           child (atom nil)]
-      (banner)
+      (banner mode port)
       (println (str warn-color "Press Ctrl+C to stop the server cleanly." reset-color))
       (.addShutdownHook
        (Runtime/getRuntime)
@@ -47,9 +97,9 @@
         (fn []
           (when-let [proc @child]
             (destroy-tree! proc)))))
-      (let [proc (p/process ["clj" "-M:run-main"] {:dir dir
-                                                   :inherit true})]
+      (let [proc (p/process command {:dir dir
+                                     :inherit true})]
         (reset! child (:proc proc))
-        @(p/check proc)))))
+        @(p/check proc))))))
 
 (apply -main *command-line-args*)
