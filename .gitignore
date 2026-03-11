@@ -23,5 +23,6 @@ plan-*.md
 .mem26
 .data
 .samples
+examples/**/*.db
 
 AGENTS.md
