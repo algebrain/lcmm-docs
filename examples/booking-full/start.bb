@@ -92,6 +92,14 @@
       (.forEach (.descendants handle) consumer)
       (.destroy process))))
 
+(def ^:private ctrl-c-exit-codes
+  #{130
+    -1073741510})
+
+(defn- ctrl-c-exit?
+  [ex]
+  (contains? ctrl-c-exit-codes (:exit (ex-data ex))))
+
 (defn -main [& args]
   (let [{:keys [mode port help?]} (parse-args args)]
     (if help?
@@ -111,6 +119,11 @@
         (let [proc (p/process command {:dir dir
                                        :inherit true})]
           (reset! child (:proc proc))
-          @(p/check proc))))))
+          (try
+            @(p/check proc)
+            (catch clojure.lang.ExceptionInfo ex
+              (if (ctrl-c-exit? ex)
+                nil
+                (throw ex)))))))))
 
 (apply -main *command-line-args*)
