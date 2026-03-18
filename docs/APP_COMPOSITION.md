@@ -14,7 +14,8 @@
 5. [OBSERVE_APP](./OBSERVE_APP.md)
 6. [SECURE_APP](./SECURE_APP.md)
 7. [GUARD](./GUARD.md)
-8. [TRACE_FLOW](./TRACE_FLOW.md)
+8. [WEBSOCKET](./WEBSOCKET.md)
+9. [TRACE_FLOW](./TRACE_FLOW.md)
 
 ## 1. Что такое app-level composition root
 
@@ -50,9 +51,10 @@
 6. `read-provider registry`
 7. `observe registry`
 8. `guard`
-9. `storage resources`
-10. app-level routes (`/healthz`, `/readyz`, `/metrics`, ops/auth handlers)
-11. middleware chain
+9. `ws-hub` или другой app-level слой доставки веб-сокета, если он нужен
+10. `storage resources`
+11. app-level routes (`/healthz`, `/readyz`, `/metrics`, ops/auth handlers, `ws-demo`, websocket endpoint)
+12. middleware chain
 
 В working `reference-app` это распределено по:
 
@@ -74,20 +76,22 @@
 6. `make-read-provider-registry`
 7. `make-guard` (если используется)
 8. `make-observe-registry`
-9. `make-storage-resources`
-10. `init!` upstream modules
-11. `init!` downstream modules
-12. `assert-requirements!`
-13. register app-level routes
-14. `router/as-ring-handler`
-15. wrap app-level middleware
+9. `make-ws-hub` (если используется)
+10. `make-storage-resources`
+11. `init!` upstream modules
+12. `init!` downstream modules
+13. `assert-requirements!`
+14. register app-level routes
+15. `router/as-ring-handler`
+16. wrap app-level middleware
 
 Почему именно так:
 
 1. модули должны получать уже созданные shared dependencies;
 2. `read-provider registry` должен быть готов до `init!` модулей;
 3. `assert-requirements!` нужно делать после инициализации модулей, но до старта HTTP;
-4. middleware chain строится уже поверх готового Ring-handler.
+4. websocket transport, если он есть, должен собираться на app-level, а не внутри модуля;
+5. middleware chain строится уже поверх готового Ring-handler.
 
 ## 4. Канонический startup skeleton
 

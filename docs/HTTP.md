@@ -6,6 +6,9 @@
 
 За полный app-level composition порядок вокруг `router`, `observe`, `guard` и middleware отвечает [`APP_COMPOSITION.md`](./APP_COMPOSITION.md). Этот документ остается сосредоточенным именно на HTTP.
 Для сквозного разбора пути от HTTP до событий, логов и аудита см. [`TRACE_FLOW.md`](./TRACE_FLOW.md). Эта тема подробно раскрывается именно там.
+Если нужен app-level realtime transport для браузера, смотрите также
+[`WEBSOCKET.md`](./WEBSOCKET.md). В LCMM веб-сокет дополняет HTTP, а не
+заменяет его.
 
 ## 1. Назначение
 

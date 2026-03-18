@@ -7,8 +7,9 @@
 1. Загружает конфиг через `lcmm-configure`.
 2. Подготавливает startup state в режимах `--reset` и `--continue`.
 3. Собирает `event-bus`, `router`, `read-provider registry`, guard и наблюдаемость.
-4. Инициализирует подключенные модули.
-5. Поднимает HTTP-маршруты, доступные через `GET`.
+4. Собирает app-level websocket transport для demo-страницы `/ws-demo`.
+5. Инициализирует подключенные модули.
+6. Поднимает HTTP-маршруты, доступные через `GET`.
 
 ## Режимы запуска
 
@@ -30,3 +31,16 @@ clj -M:run-main -- --continue
 ```bash
 bb test.bb
 ```
+
+## WebSocket demo
+
+Для ручной проверки websocket-пути приложение отдает:
+
+- `GET /ws-demo`
+
+Это маленькая встроенная HTML-страница, а не отдельный frontend-проект.
+Она нужна только для проверки transport flow в браузере:
+
+1. открыть соединение;
+2. подписаться;
+3. увидеть push после `booking/created`.

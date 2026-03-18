@@ -15,7 +15,8 @@
             [notify.core :as notify]
             [booking-full.schema-registry :as schema-registry]
             [booking-full.security :as security]
-            [booking-full.storage :as storage]))
+            [booking-full.storage :as storage]
+            [booking-full.websocket :as websocket]))
 
 (defn- make-checks [registry]
   [{:name :read-providers
@@ -66,6 +67,7 @@
                         :log-payload :none)
              app-router (router/make-router)
              registry (rpr/make-registry)
+             ws-hub (websocket/make-hub)
              guard-instance (security/make-guard app-config)
              observe-registry (obs/make-registry
                                :strict-labels? false
@@ -111,6 +113,7 @@
              _ (rpr/assert-requirements! registry)
              checks (make-checks registry)
              _ (security/install-security-routes! app-router registry guard-instance logger)
+             _ (websocket/install-websocket-routes! app-router registry event-bus guard-instance logger ws-hub)
              _ (router/add-route! app-router :get "/healthz" (http/health-handler {}) {:name ::healthz})
              _ (router/add-route! app-router :get "/readyz" (http/ready-handler {:checks checks}) {:name ::readyz})
              _ (router/add-route! app-router :get "/metrics" metrics-handler {:name ::metrics})
@@ -144,7 +147,7 @@
                         :env-keys (:env-keys meta)})
          (logger :info {:component ::system
                         :event :app/started})
-         system-map)
+         (assoc system-map :ws-hub ws-hub))
        (catch Throwable ex
          (logger :error {:component ::system
                          :event :app/start-failed

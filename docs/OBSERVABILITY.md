@@ -12,6 +12,8 @@
 Практические рекомендации по применению:
 1. Для уровня приложения: [OBSERVE_APP.md](./OBSERVE_APP.md).
 2. Для уровня модулей: [OBSERVE_MODULE.md](./OBSERVE_MODULE.md).
+3. Для app-level доставки событий в браузер через веб-сокет:
+   [WEBSOCKET.md](./WEBSOCKET.md).
 
 ## 1. API Reference (канонический контракт)
 
