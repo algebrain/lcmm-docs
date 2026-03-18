@@ -9,7 +9,7 @@
         catalog/module {:local/root "../catalog"}
         booking/module {:local/root "../booking"}
         com.github.algebrain/lcmm-event-bus {:git/url "https://github.com/algebrain/lcmm-event-bus"
-                                             :git/sha "04e05b0d451b0d91f28e8c89b0518c3bba6c0357"}
+                                             :git/sha "dbfba133ff5a5faed6e05e2f0f6bf58a454630a9"}
         com.github.algebrain/lcmm-http {:git/url "https://github.com/algebrain/lcmm-http"
                                         :git/sha "10df646d542adfa25d52e73c1d61b3cdc7178c48"}
         com.github.algebrain/lcmm-registry {:git/url "https://github.com/algebrain/lcmm-registry"
