@@ -248,4 +248,8 @@
 - concurrency limits на инстанс;
 - единый HTTP-контракт ошибок и финальное преобразование `action -> HTTP response`.
 
+Практическое уточнение:
+- `lcmm-guard` может давать optional Ring helpers (`lcmm-guard.ring/wrap-guard`, `lcmm-guard.ring/default-action->response`) для снятия boilerplate;
+- это не отменяет того, что окончательная HTTP-политика приложения и ownership middleware chain остаются на app-layer.
+
 3. Для малого проекта это целевой режим: guard не дублирует HTTP runtime ограничения, а интегрируется с ними.

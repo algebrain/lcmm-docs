@@ -12,8 +12,8 @@
 
 1. добавьте зависимость в `deps.edn`;
 2. соберите guard через `make-guard`;
-3. вызывайте `evaluate-request!` в app-level middleware до бизнес-обработчиков;
-4. переведите `:action` в обычный HTTP-ответ;
+3. вызывайте `evaluate-request!` в app-level middleware до бизнес-обработчиков или используйте optional adapter `lcmm-guard.ring/wrap-guard`;
+4. переведите `:action` в обычный HTTP-ответ вручную или через `lcmm-guard.ring/default-action->response`;
 5. отправляйте `:events` в логирование и мониторинг.
 
 Строгий контракт API описан в [GUARD_API](./GUARD_API.md).
@@ -39,7 +39,7 @@
 встраивается так:
 
 1. приложение создает guard при запуске;
-2. основной HTTP-обработчик оборачивается через `wrap-guard`;
+2. основной HTTP-обработчик оборачивается через `lcmm-guard.ring/wrap-guard`;
 3. обычный запрос сначала проходит через guard;
 4. при неудачном входе приложение отдельно сообщает guard о такой попытке;
 5. для снятия блокировки есть отдельный служебный маршрут;
@@ -52,10 +52,23 @@
 
 (def app-handler
   (-> raw-handler
-      (wrap-guard guard-instance logger)
-      (http/wrap-correlation-context {:expose-headers? true})
-      (http/wrap-error-contract {})))
+      (lcmm-guard.ring/wrap-guard
+       guard-instance
+       {:now-fn #(quot (System/currentTimeMillis) 1000)
+        :preprocess-request lcmm-guard.ring/preprocess-loopback-remote-addr
+        :request->guard-opts lcmm-guard.ring/default-request->guard-opts
+        :action->response lcmm-guard.ring/default-action->response
+        :on-result (fn [_ result]
+                     ;; В реальном приложении отправьте result/events в ваш logger.
+                     nil)})
+      (http/wrap-error-contract {})
+      (http/wrap-correlation-context {:expose-headers? true})))
 ```
+
+Практическое правило:
+1. если вам нужна нормализация localhost/loopback-адресов (`::1`, `0:0:0:0:0:0:0:1`, `::ffff:127.0.0.1`) в один guard state, используйте `lcmm-guard.ring/preprocess-loopback-remote-addr`;
+2. не дублируйте в приложении свой локальный список loopback alias-ов, если вы уже перешли на этот helper;
+3. один и тот же preprocessing должен применяться и в обычном guard path, и в auth-failure path.
 
 Если вход не удался, приложение может отдельно сообщить об этом guard:
 
@@ -69,14 +82,39 @@
                           :correlation-id (:lcmm/correlation-id request)})
 ```
 
+Для этого же сценария можно использовать и helper:
+
+```clojure
+(guard.ring/report-auth-failure! guard-instance
+                                 {:request (lcmm-guard.ring/preprocess-loopback-remote-addr request)
+                                  :endpoint "/auth/demo-login"
+                                  :code :invalid-credentials
+                                  :now (quot (System/currentTimeMillis) 1000)})
+```
+
+Важно: `report-auth-failure!` не делает request preprocessing автоматически.
+Если приложение использует такую же preprocessing-политику, как в `wrap-guard`
+(например, нормализацию loopback-адресов), тот же подготовленный request надо
+передавать и в helper.
+
 А для ручного снятия блокировки используется отдельный вызов:
 
 ```clojure
 (guard/unban-ip! guard-instance
                  {:ip "203.0.113.10"
                   :reason :manual
-                  :now (quot (System/currentTimeMillis) 1000)
-                  :correlation-id (:lcmm/correlation-id request)})
+                   :now (quot (System/currentTimeMillis) 1000)
+                   :correlation-id (:lcmm/correlation-id request)})
+```
+
+Если нужно не только снять ban, но и очистить накопленные counters для IP, используйте:
+
+```clojure
+(guard/unban-and-reset-ip! guard-instance
+                           {:ip "203.0.113.10"
+                            :reason :manual
+                            :now (quot (System/currentTimeMillis) 1000)
+                            :correlation-id (:lcmm/correlation-id request)})
 ```
 
 Именно такую схему удобно держать в голове при чтении остального документа.
@@ -156,6 +194,27 @@
 
 ### 4.3 Применение результата guard к HTTP-ответу
 
+Для типового Ring-приложения можно использовать optional adapter:
+
+```clojure
+(ns myapp.security.middleware
+  (:require [lcmm-guard.ring :as guard.ring]))
+
+(def app
+  (guard.ring/wrap-guard
+   handler
+   guard-instance
+   {:now-fn #(quot (System/currentTimeMillis) 1000)
+    :preprocess-request guard.ring/preprocess-loopback-remote-addr
+    :request->guard-opts guard.ring/default-request->guard-opts
+    :action->response guard.ring/default-action->response
+    :on-result (fn [_ result]
+                 ;; В реальном приложении отправьте result/events в ваш logger.
+                 nil)}))
+```
+
+Если вы не хотите использовать adapter, можно оставить ручную интеграцию:
+
 ```clojure
 (ns myapp.security.middleware
   (:require [lcmm-guard.core :as guard]))
@@ -221,8 +280,22 @@
                             :endpoint (:uri req)
                             :code :invalid-credentials
                             :now (quot (System/currentTimeMillis) 1000)
-                            :correlation-id (get-in req [:headers "x-correlation-id"])}))
+                             :correlation-id (get-in req [:headers "x-correlation-id"])}))
 ```
+
+То же самое через helper:
+
+```clojure
+(defn on-auth-failed [guard-instance req]
+  (guard.ring/report-auth-failure! guard-instance
+                                   {:request (guard.ring/preprocess-loopback-remote-addr req)
+                                    :endpoint (:uri req)
+                                    :code :invalid-credentials
+                                    :now (quot (System/currentTimeMillis) 1000)}))
+```
+
+Если у вас есть app-level preprocessing request перед обычным guard path,
+применяйте его и здесь до вызова helper.
 
 Если порог превышен, guard вернет `:banned` и сформирует security-события.
 
@@ -264,6 +337,8 @@
                             :correlation-id "..."})
 ```
 
+`unban-ip!` сам нормализует literal IP перед снятием бана, поэтому для IPv6 допустимы разные корректные текстовые формы одного и того же адреса.
+
 Возврат (успех):
 
 ```clojure
@@ -281,7 +356,46 @@
  :events [{:event/kind :guard/degraded ...}]}
 ```
 
-### 6.3 Порядок принятия решения внутри `evaluate-request!`
+### 6.3 `reset-ip-state!`
+
+Сигнатура:
+
+```clojure
+(lcmm-guard.core/reset-ip-state! guard-instance
+                                 {:ip "203.0.113.10"
+                                  :reason :manual
+                                  :now epoch-seconds
+                                  :correlation-id "..."})
+```
+
+`reset-ip-state!` нормализует `:ip` так же, как обычный guard-path. Это важно для IPv6: административная очистка попадет в те же ключи, даже если адрес введен в другой корректной записи.
+
+Назначение:
+1. очищает rate-limit state для IP;
+2. очищает detector state для IP по всем настроенным `:kind`;
+3. сам по себе не снимает active ban.
+
+### 6.4 `unban-and-reset-ip!`
+
+Сигнатура:
+
+```clojure
+(lcmm-guard.core/unban-and-reset-ip! guard-instance
+                                     {:ip "203.0.113.10"
+                                      :reason :manual
+                                      :now epoch-seconds
+                                      :correlation-id "..."})
+```
+
+`unban-and-reset-ip!` использует ту же нормализацию IP для обоих шагов, поэтому один вызов корректно снимает бан и очищает state для IPv4 и IPv6 literal-адресов.
+
+Назначение:
+1. снимает ban;
+2. затем очищает counters для IP;
+3. возвращает нормализованный `:ip`;
+4. возвращает объединенные security events.
+
+### 6.5 Порядок принятия решения внутри `evaluate-request!`
 
 1. `ip-resolver`: определить клиентский IP.
 2. `ban-store`: если IP уже в бане -> `:banned`.

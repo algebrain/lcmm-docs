@@ -103,6 +103,7 @@
 ```clojure
 (ns my.app.system
   (:require [event-bus :as bus]
+            [lcmm-guard.ring :as guard.ring]
             [lcmm.http.core :as http]
             [lcmm.observe :as obs]
             [lcmm.observe.http :as observe.http]
@@ -154,7 +155,15 @@
                      :route-fn (fn [req]
                                  (or (get-in req [:reitit.core/match :template])
                                      "unknown"))})
-          guarded (wrap-guard observed guard-instance logger)
+          guarded (guard.ring/wrap-guard
+                    observed
+                    guard-instance
+                    {:now-fn #(quot (System/currentTimeMillis) 1000)
+                     :request->guard-opts guard.ring/default-request->guard-opts
+                     :action->response guard.ring/default-action->response
+                     :on-result (fn [_ result]
+                                  ;; send result/events to your logger
+                                  nil)})
           app-handler (-> guarded
                           (http/wrap-correlation-context {:expose-headers? true})
                           (http/wrap-error-contract {}))]

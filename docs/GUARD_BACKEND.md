@@ -36,6 +36,9 @@ Backend используется только в двух местах:
 | `incr-bucket!` | Increment per `(key, bucket)` counter | new counter value (`long`) |
 | `buckets-snapshot` | Read buckets for one logical key | `{bucket -> count}` |
 | `prune-before-bucket!` | Remove old buckets `< min-bucket` for one key | ignored (`nil` acceptable) |
+| `delete-by-prefix!` (optional admin) | Remove all logical keys with a prefix | ignored (`nil` acceptable) |
+| `state-summary` (optional debug) | Summarize whole counter state | implementation-defined map |
+| `prefix-summary` (optional debug) | Summarize one logical prefix | implementation-defined map |
 | `put-ttl!` | Save value with absolute expiry time | stored value |
 | `get-live` | Read value only if not expired | value or `nil` |
 | `delete-key!` | Remove key | ignored (`nil` acceptable) |
@@ -54,6 +57,13 @@ Use this table first; deep semantics and examples are below.
   (buckets-snapshot [this k])
   (prune-before-bucket! [this k min-bucket]))
 
+(defprotocol CounterStoreAdmin
+  (delete-by-prefix! [this prefix]))
+
+(defprotocol CounterStoreDebug
+  (state-summary [this])
+  (prefix-summary [this prefix]))
+
 (defprotocol TtlStore
   (put-ttl! [this k value expires-at-sec])
   (get-live [this k now-sec])
@@ -61,7 +71,36 @@ Use this table first; deep semantics and examples are below.
 ```
 
 
-### 3.1 Опциональный протокол durability
+### 3.1 Опциональный admin-протокол для ops reset
+
+Файл: `src/lcmm_guard/backend/protocols.clj`
+
+```clojure
+(defprotocol CounterStoreAdmin
+  (delete-by-prefix! [this prefix]))
+```
+
+Использование:
+1. `delete-by-prefix!` нужен для публичного ops API `reset-ip-state!`;
+2. библиотека использует его для очистки rate-limit и detector state без утечки layout ключей наружу;
+3. если backend не реализует этот протокол, `reset-ip-state!` и `unban-and-reset-ip!` не смогут выполнить cleanup counters и завершатся через обычный guard fail-mode.
+
+### 3.2 Опциональный debug-протокол
+
+Файл: `src/lcmm_guard/backend/protocols.clj`
+
+```clojure
+(defprotocol CounterStoreDebug
+  (state-summary [this])
+  (prefix-summary [this prefix]))
+```
+
+Использование:
+1. `state-summary` дает краткую сводку по состоянию counter-store;
+2. `prefix-summary` дает сводку по одному префиксу ключей;
+3. это диагностический API для тестов, benchmark/debug tooling и наблюдаемости, а не часть hot path.
+
+### 3.3 Опциональный протокол durability
 
 Файл: `src/lcmm_guard/backend/protocols.clj`
 
@@ -112,7 +151,35 @@ Use this table first; deep semantics and examples are below.
 2. можно быть idempotent;
 3. возвращаемое значение не используется (можно `nil`).
 
-### 4.4 `TtlStore/put-ttl!`
+### 4.4 `CounterStoreAdmin/delete-by-prefix!`
+
+Удаляет все logical keys, начинающиеся с `prefix`.
+
+Требования:
+1. префикс сравнивается по логической структуре ключа, а не по строковому представлению;
+2. должны удаляться только ключи с данным префиксом;
+3. операция нужна для ops cleanup path (`reset-ip-state!`, `unban-and-reset-ip!`);
+4. возвращаемое значение не используется (можно `nil`).
+
+### 4.5 `CounterStoreDebug/state-summary`
+
+Возвращает краткую сводку по состоянию counter-store.
+
+Требования:
+1. это debug API, а не hot path;
+2. форма map может быть implementation-defined, но должна быть пригодна для диагностики;
+3. для стандартного in-memory backend сейчас используются поля вроде `:logical-key-count` и `:entry-count`.
+
+### 4.6 `CounterStoreDebug/prefix-summary`
+
+Возвращает краткую сводку по одному префиксу logical keys.
+
+Требования:
+1. это debug API, а не hot path;
+2. операция не должна менять состояние store;
+3. форма map может быть implementation-defined, но должна быть пригодна для диагностики и benchmark/debug tooling.
+
+### 4.7 `TtlStore/put-ttl!`
 
 Сохраняет значение и абсолютное время истечения `expires-at-sec`.
 
@@ -121,7 +188,7 @@ Use this table first; deep semantics and examples are below.
 2. `expires-at-sec` трактуется как epoch-seconds;
 3. возвращать записанное значение (по текущей практике in-memory backend).
 
-### 4.5 `TtlStore/get-live`
+### 4.8 `TtlStore/get-live`
 
 Возвращает значение только если оно еще не истекло на момент `now-sec`.
 
@@ -130,7 +197,7 @@ Use this table first; deep semantics and examples are below.
 2. если отсутствует — возвращать `nil`;
 3. ленивое удаление просроченных ключей допустимо.
 
-### 4.6 `TtlStore/delete-key!`
+### 4.9 `TtlStore/delete-key!`
 
 Удаляет ключ.
 
@@ -353,6 +420,8 @@ Backend считается готовым, когда:
 3. пройдены интеграционные тесты через `evaluate-request!`;
 4. документированы ограничения backend (durability, latency, failover);
 5. описаны настройки (pool, timeout, retry) и безопасные дефолты.
+6. если backend должен поддерживать ops cleanup path, реализован `CounterStoreAdmin`;
+7. если backend хочет сохранить удобную диагностику на уровне стандартного in-memory backend, реализован `CounterStoreDebug`.
 
 ## 15. Краткая памятка
 

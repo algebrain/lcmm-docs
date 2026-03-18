@@ -44,7 +44,7 @@
 5. `:mode-policy` map с `:mode` = `:fail-open | :fail-closed`.
 
 Возврат:
-1. Экземпляр guard (opaque для вызывающего кода; передается в `evaluate-request!` / `unban-ip!`).
+1. Экземпляр guard (opaque для вызывающего кода; передается в `evaluate-request!`, `unban-ip!`, `reset-ip-state!`, `unban-and-reset-ip!`).
 
 Примечание:
 1. `:ip-config` нормализуется внутри через `prepare-ip-config`.
@@ -161,6 +161,168 @@
                     :reason :manual
                     :correlation-id "admin-42"})
 ```
+
+Примечание:
+1. `:ip` может быть передан как в каноническом виде, так и в другой корректной literal-форме; guard сам нормализует IPv4/IPv6 перед `unban`.
+
+## 2.4 `lcmm-guard.core/reset-ip-state!`
+
+Зачем:
+1. Очищает накопленный rate-limit и detector state для конкретного IP.
+
+Когда применять:
+1. В ops/admin потоке, если нужно снять накопленные counters без изменения ban state.
+2. После ручной диагностики или отладки ложных срабатываний.
+
+Сигнатура:
+
+```clojure
+(reset-ip-state! guard-instance
+                 {:ip "canonical-or-literal-ip"
+                  :reason keyword?|string?|nil
+                  :now epoch-seconds|nil
+                  :correlation-id string?|nil})
+```
+
+Форма возврата (успех):
+
+```clojure
+{:ok? true
+ :ip "..."
+ :events [{:event/kind :guard/state-reset ...}]}
+```
+
+Форма возврата (деградация):
+
+```clojure
+{:ok? false
+ :ip "..."
+ :action :degraded-allow|:degraded-block
+ :events [{:event/kind :guard/degraded ...}]}
+```
+
+Примечание:
+1. Для очистки counters backend counter-store должен поддерживать admin-операцию удаления по префиксу ключа.
+2. `:ip` нормализуется так же, как в обычном request-path, поэтому для IPv6 можно передавать любую корректную literal-форму адреса.
+
+## 2.5 `lcmm-guard.core/unban-and-reset-ip!`
+
+Зачем:
+1. Выполняет типовой ops-сценарий: снять ban и сразу очистить накопленный state для IP.
+
+Когда применять:
+1. В admin/ops endpoint-ах ручного восстановления доступа.
+
+Сигнатура:
+
+```clojure
+(unban-and-reset-ip! guard-instance
+                     {:ip "canonical-or-literal-ip"
+                      :reason keyword?|string?|nil
+                      :now epoch-seconds|nil
+                      :correlation-id string?|nil})
+```
+
+Примечание:
+1. `:ip` нормализуется перед обоими шагами операции, поэтому сценарий корректно работает и для IPv6, даже если admin передал адрес не в том же текстовом виде, в каком он накопился в counters/ban-store.
+2. В поле результата `:ip` возвращается нормализованный адрес.
+
+Форма возврата (успех):
+
+```clojure
+{:ok? true
+ :ip "..."
+ :events [{:event/kind :guard/unbanned ...}
+          {:event/kind :guard/state-reset ...}]}
+```
+
+Форма возврата (деградация):
+
+```clojure
+{:ok? false
+ :ip "..."
+ :action :degraded-allow|:degraded-block
+ :events [...]}
+```
+
+## 2.6 `lcmm-guard.ring`
+
+Этот namespace задает optional Ring adapter поверх `core` API.
+Он не заменяет `lcmm-guard.core`, а только убирает повторяющийся app-level plumbing.
+
+### `wrap-guard`
+
+Сигнатура:
+
+```clojure
+(wrap-guard handler
+            guard-instance
+            {:now-fn fn?
+             :preprocess-request fn?
+             :request->guard-opts fn?
+             :action->response fn?
+             :on-result fn?})
+```
+
+Семантика:
+1. `:preprocess-request` вызывается до `evaluate-request!`;
+2. `:request->guard-opts` собирает аргументы для `evaluate-request!`;
+3. `:action->response` строит short-circuit response или возвращает `nil`;
+4. `:on-result` вызывается на всех типах результата.
+
+Практическое правило:
+1. если приложение использует `:preprocess-request` для нормализации loopback/localhost адресов, тот же preprocessing надо применять и в auth-failure path;
+2. не держите в приложении отдельный локальный список loopback alias-ов, если уже используете библиотечный helper для того же поведения.
+
+### `preprocess-loopback-remote-addr`
+
+Сигнатура:
+
+```clojure
+(preprocess-loopback-remote-addr ring-request)
+```
+
+Назначение:
+1. нормализует loopback textual aliases в request `:remote-addr` к одному значению для guard integration path;
+2. нужен для того, чтобы `127.0.0.1`, `::1`, `0:0:0:0:0:0:0:1` и `::ffff:127.0.0.1` не расходились по разным ключам guard state;
+3. это helper integration-layer, а не замена общей IP canonicalization в `ip-resolver`.
+
+### `default-request->guard-opts`
+
+Возвращает:
+
+```clojure
+{:request request
+ :correlation-id (:lcmm/correlation-id request)}
+```
+
+### `default-action->response`
+
+Типовые соответствия:
+1. `:allow -> nil`
+2. `:degraded-allow -> nil`
+3. `:rate-limited -> {:status 429 ...}`
+4. `:banned -> {:status 429 ...}`
+5. `:degraded-block -> {:status 503 ...}`
+
+### `report-auth-failure!`
+
+Сигнатура:
+
+```clojure
+(report-auth-failure! guard-instance
+                      {:request ring-request
+                       :endpoint string
+                       :code keyword?|string?|nil
+                       :now epoch-seconds
+                       :request->guard-opts fn?})
+```
+
+Назначение:
+1. helper для сценария, где auth уже не прошел и нужно передать `:auth-failed` в guard;
+2. сам helper не строит success/fallback auth response и не заменяет auth flow приложения.
+3. helper не применяет `:preprocess-request` автоматически; если приложению нужна та же preprocessing-политика, что и в `wrap-guard`, оно должно передать уже подготовленный `request`.
+4. типичный пример: если `wrap-guard` использует `preprocess-loopback-remote-addr`, перед `report-auth-failure!` нужно передавать request после этого же helper.
 
 ## 3. IP resolver API
 

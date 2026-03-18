@@ -168,6 +168,10 @@
 - ограничение параллелизма;
 - финальный HTTP-ответ по результату guard.
 
+Практическое уточнение:
+- `lcmm-guard` может давать optional Ring helpers вроде `lcmm-guard.ring/wrap-guard`, `lcmm-guard.ring/default-action->response` и `lcmm-guard.ring/report-auth-failure!`;
+- это снижает boilerplate, но не переносит в библиотеку ownership над app routes, auth flow, log shape или middleware order.
+
 3. Важно: app-level слой не должен полагаться на DNS-разрешение имени для
    клиентского IP в защитном контуре; guard принимает только буквальный IP-адрес.
 
