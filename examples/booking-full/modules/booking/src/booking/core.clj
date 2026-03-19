@@ -4,6 +4,8 @@
             [lcmm.http.core :as http]
             [lcmm.read-provider-registry :as rpr]
             [lcmm.router :as router]
+            [lcmm-ws.bridge :as ws.bridge]
+            [lcmm-ws.registry :as ws.registry]
             [booking.db :as db]))
 
 (def supported-backends #{"jdbc" "sqlite"})
@@ -66,6 +68,41 @@
 
 (defn- booking-publish-opts [request]
   (http/->bus-publish-opts request {:module :booking}))
+
+(defn- register-websocket-export!
+  [{:keys [ws-registry ws-bridge logger]}]
+  (when (and ws-registry ws-bridge)
+    (ws.registry/register-subscription-handler!
+     ws-registry
+     {:module :booking
+      :topic-kind :user
+      :match-topic? (fn [topic]
+                      (and (vector? topic)
+                           (= :user (first topic))
+                           (string? (second topic))))
+      :authorize-subscribe
+      (fn [{:keys [session topic]}]
+        {:ok? (= (get-in session [:subject :user-id])
+                 (second topic))})})
+    (ws.bridge/register-event-bridge!
+     {:subscribe-fn (:subscribe-fn ws-bridge)
+      :registry ws-registry
+      :hub (:hub ws-bridge)
+      :transport (:transport ws-bridge)
+      :event-type :booking/created
+      :module :booking
+      :project (fn [{:keys [envelope]}]
+                 (let [{:keys [booking-id slot-id user-id]} (:payload envelope)]
+                   [{:topic [:user user-id]
+                     :message {:type "event"
+                               :event "booking/created"
+                               :topic ["user" user-id]
+                               :payload {:bookingId booking-id
+                                         :userId user-id
+                                         :slotId slot-id}
+                               :correlationId (:correlation-id envelope)}}]))})
+    (logger :info {:component ::booking
+                   :event :booking/websocket-export-registered})))
 
 (defn- handle-create-booking [store logger get-user get-slot bus-instance request]
   (let [slot-id (query-param request :slot-id)
@@ -174,6 +211,7 @@
                        :get "/bookings"
                        (partial handle-list-bookings store logger)
                        {:name ::list-bookings})
+    (register-websocket-export! deps)
     (logger :info {:component ::booking :event :module-initialized})
     {:module :booking
      :store store}))

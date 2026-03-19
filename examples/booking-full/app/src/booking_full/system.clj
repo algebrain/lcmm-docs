@@ -68,6 +68,8 @@
              app-router (router/make-router)
              registry (rpr/make-registry)
              ws-hub (websocket/make-hub)
+             ws-registry (websocket/make-ws-registry)
+             ws-transport-state (websocket/make-transport-state)
              guard-instance (security/make-guard app-config)
              observe-registry (obs/make-registry
                                :strict-labels? false
@@ -93,6 +95,11 @@
                            :router app-router
                            :logger logger
                            :read-provider-registry registry
+                           :ws-registry ws-registry
+                           :ws-bridge {:hub ws-hub
+                                       :transport (:transport ws-transport-state)
+                                       :subscribe-fn (fn [event-type handler opts]
+                                                       (bus/subscribe event-bus event-type handler opts))}
                            :config (config/module-storage-config app-config :booking)
                            :db (storage/booking-db-resource app-config)}
              notify-deps {:bus event-bus
@@ -113,7 +120,7 @@
              _ (rpr/assert-requirements! registry)
              checks (make-checks registry)
              _ (security/install-security-routes! app-router registry guard-instance logger)
-             _ (websocket/install-websocket-routes! app-router registry event-bus guard-instance logger ws-hub)
+             _ (websocket/install-websocket-routes! app-router registry guard-instance logger ws-hub ws-transport-state ws-registry)
              _ (router/add-route! app-router :get "/healthz" (http/health-handler {}) {:name ::healthz})
              _ (router/add-route! app-router :get "/readyz" (http/ready-handler {:checks checks}) {:name ::readyz})
              _ (router/add-route! app-router :get "/metrics" metrics-handler {:name ::metrics})
@@ -138,6 +145,8 @@
                          :router app-router
                          :guard guard-instance
                          :read-provider-registry registry
+                         :ws-registry ws-registry
+                         :ws-transport-state ws-transport-state
                          :observe-registry observe-registry
                          :handler app-handler}]
          (logger :info {:component ::system

@@ -1,5 +1,6 @@
 (ns booking-full.websocket-test
   (:require [booking-full.test-support :as support]
+            [clojure.data.json :as json]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [org.httpkit.server :as http-kit])
@@ -51,6 +52,10 @@
 (defn- receive-message [messages]
   (.poll messages 3 TimeUnit/SECONDS))
 
+(defn- receive-json [messages]
+  (some-> (receive-message messages)
+          (json/read-str :key-fn keyword)))
+
 (defn- http-get [port path]
   (let [client (HttpClient/newHttpClient)
         request (-> (HttpRequest/newBuilder
@@ -86,17 +91,17 @@
             (let [{:keys [websocket messages]} (connect-websocket port "u-alice" origin)]
               (try
                 (.join (.sendText websocket "{\"type\":\"subscribe\",\"topic\":[\"user\",\"u-alice\"]}" true))
-                (let [subscribed (receive-message messages)]
-                  (is (string? subscribed))
-                  (is (str/includes? subscribed "\"type\":\"subscribed\"")))
+                (let [subscribed (receive-json messages)]
+                  (is (= {:type "subscribed"
+                          :topic ["user" "u-alice"]}
+                         subscribed)))
                 (let [response (http-get port "/bookings/actions/create?slot-id=slot-09-00&user-id=u-alice")]
                   (is (= 200 (.statusCode response))))
-                (let [event-message (receive-message messages)]
-                  (is (string? event-message))
-                  (is (str/includes? event-message "\"type\":\"event\""))
-                  (is (str/includes? event-message "\"event\":\"booking/created\""))
-                  (is (str/includes? event-message "\"bookingId\""))
-                  (is (str/includes? event-message "\"userId\":\"u-alice\"")))
+                (let [event-message (receive-json messages)]
+                  (is (= "event" (:type event-message)))
+                  (is (= "booking/created" (:event event-message)))
+                  (is (= "u-alice" (get-in event-message [:payload :userId])))
+                  (is (string? (get-in event-message [:payload :bookingId]))))
                 (finally
                   (.join (.sendClose websocket WebSocket/NORMAL_CLOSURE "bye")))))
             (finally
@@ -115,11 +120,38 @@
             (let [{:keys [websocket messages]} (connect-websocket port "u-admin" origin)]
               (try
                 (.join (.sendText websocket "{\"type\":\"subscribe\",\"topic\":[\"user\",\"u-alice\"]}" true))
-                (let [message (receive-message messages)]
-                  (is (string? message))
-                  (is (str/includes? message "\"type\":\"error\""))
-                  (is (str/includes? message "\"code\":\"subscription_rejected\""))
-                  (is (not (str/includes? message "not found"))))
+                (let [message (receive-json messages)]
+                  (is (= "error" (:type message)))
+                  (is (= "subscription_rejected" (:code message)))
+                  (is (= "Subscription rejected" (:message message))))
+                (finally
+                  (.join (.sendClose websocket WebSocket/NORMAL_CLOSURE "bye")))))
+            (finally
+              (stop-http-server! server))))
+        (finally
+          (doseq [resource test-db-resources]
+            (support/cleanup-temp! resource)))))))
+
+(deftest ping-and-unsubscribe-work-over-real-network-test
+  (testing "client can ping and unsubscribe through real websocket flow"
+    (let [{:keys [handler test-db-resources]} (support/make-test-system)]
+      (try
+        (let [{:keys [server port]} (start-http-server handler)
+              origin (str "http://127.0.0.1:" port)]
+          (try
+            (let [{:keys [websocket messages]} (connect-websocket port "u-alice" origin)]
+              (try
+                (.join (.sendText websocket "{\"type\":\"ping\"}" true))
+                (is (= {:type "pong"}
+                       (receive-json messages)))
+                (.join (.sendText websocket "{\"type\":\"subscribe\",\"topic\":[\"user\",\"u-alice\"]}" true))
+                (is (= {:type "subscribed"
+                        :topic ["user" "u-alice"]}
+                       (receive-json messages)))
+                (.join (.sendText websocket "{\"type\":\"unsubscribe\",\"topic\":[\"user\",\"u-alice\"]}" true))
+                (is (= {:type "unsubscribed"
+                        :topic ["user" "u-alice"]}
+                       (receive-json messages)))
                 (finally
                   (.join (.sendClose websocket WebSocket/NORMAL_CLOSURE "bye")))))
             (finally

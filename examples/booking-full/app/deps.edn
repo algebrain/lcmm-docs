@@ -18,6 +18,8 @@
                                          :git/sha "c4d3a709b4224b0b142bba10691603ae71fe0746"}
         com.github.algebrain/lcmm-http {:git/url "https://github.com/algebrain/lcmm-http"
                                         :git/sha "10df646d542adfa25d52e73c1d61b3cdc7178c48"}
+        com.github.algebrain/lcmm-ws {:git/url "https://github.com/algebrain/lcmm-ws"
+                                      :git/sha "ba84f182cf59154249af886a378bdb8a44e3b5b4"}
         accounts/module {:local/root "../modules/accounts"}
         catalog/module {:local/root "../modules/catalog"}
         booking/module {:local/root "../modules/booking"}
