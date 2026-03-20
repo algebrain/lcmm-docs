@@ -51,7 +51,7 @@
 6. `read-provider registry`
 7. `observe registry`
 8. `guard`
-9. `ws-hub` или другой app-level слой доставки веб-сокета, если он нужен
+9. `ws-hub` и общий websocket-транспорт, если они нужны
 10. `storage resources`
 11. app-level routes (`/healthz`, `/readyz`, `/metrics`, ops/auth handlers, `ws-demo`, websocket endpoint)
 12. middleware chain
@@ -76,7 +76,7 @@
 6. `make-read-provider-registry`
 7. `make-guard` (если используется)
 8. `make-observe-registry`
-9. `make-ws-hub` (если используется)
+9. `make-ws-hub` и `make-ws-transport-state` (если используется websocket)
 10. `make-storage-resources`
 11. `init!` upstream modules
 12. `init!` downstream modules
@@ -91,7 +91,8 @@
 2. `read-provider registry` должен быть готов до `init!` модулей;
 3. `assert-requirements!` нужно делать после инициализации модулей, но до старта HTTP;
 4. websocket transport, если он есть, должен собираться на app-level, а не внутри модуля;
-5. middleware chain строится уже поверх готового Ring-handler.
+5. если используется `lcmm-ws`, websocket собирается на app-level, а модули не получают `lcmm-ws` в свои `deps` и не управляют transport-правилами;
+6. middleware chain строится уже поверх готового Ring-handler.
 
 ## 4. Канонический startup skeleton
 
@@ -218,6 +219,12 @@
 
 1. `:observe-registry`
 
+Если приложению нужен websocket:
+
+1. модулю по-прежнему не нужен `lcmm-ws` в `deps.edn`;
+2. app-level слой сам проецирует доменные события в websocket delivery;
+3. если есть входящий business flow из внешнего мира, модуль может читать app-owned ingress event из шины, а не raw websocket contract.
+
 ### 5.2 Что модуль не должен собирать сам по умолчанию
 
 Модуль не должен сам:
@@ -278,18 +285,20 @@ LCMM рекомендует разделять:
 5. provider-registry creation
 6. observe-registry creation
 7. guard creation
-8. storage resource creation
-9. startup checks
-10. middleware chain
+8. ws-hub / ws-transport creation
+9. storage resource creation
+10. startup checks
+11. middleware chain
 
 ### Module owns
 
 1. route registration через переданный router
 2. event subscriptions через переданный bus
 3. provider registration или requirement declaration
-4. свою бизнес-логику
-5. свой storage layer поверх переданного resource
-6. свои полезные module-level metrics
+4. свою бизнес-логику для WS-сценариев через обычные события шины
+5. свою бизнес-логику
+6. свой storage layer поверх переданного resource
+7. свои полезные module-level metrics
 
 ## 8. Канонический middleware order
 

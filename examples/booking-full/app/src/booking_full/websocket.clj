@@ -1,5 +1,6 @@
 (ns booking-full.websocket
-  (:require [lcmm-guard.core :as guard]
+  (:require [event-bus :as bus]
+            [lcmm-guard.core :as guard]
             [lcmm.read-provider-registry :as rpr]
             [lcmm.router :as router]
             [lcmm-ws.codec :as ws.codec]
@@ -8,7 +9,6 @@
             [lcmm-ws.http-kit :as ws.http-kit]
             [lcmm-ws.limits :as ws.limits]
             [lcmm-ws.protocol :as ws.protocol]
-            [lcmm-ws.registry :as ws.registry]
             [lcmm-ws.transport :as ws.transport]))
 
 (def ^:private max-message-bytes 8192)
@@ -16,9 +16,6 @@
 
 (defn make-hub []
   (ws.core/make-hub))
-
-(defn make-ws-registry []
-  (ws.registry/make-registry))
 
 (defn make-transport-state []
   (ws.http-kit/make-transport))
@@ -67,9 +64,15 @@
 (defn- close-connection! [transport-state connection-id]
   (ws.transport/close-connection! (:transport transport-state) connection-id))
 
+(defn- authorize-subscribe [{:keys [session topic]}]
+  {:ok? (and (= :user (first topic))
+             (= (get-in session [:subject :user-id])
+                (second topic)))})
+
 (defn- maybe-close-after-security! [hub transport-state connection-id result]
   (when (contains? #{:rate-limited :banned :degraded-block} (:action result))
-    (send-text! transport-state connection-id (ws.codec/error-message "connection_rejected" "Connection rejected"))
+    (send-text! transport-state connection-id
+                (ws.codec/error-message "connection_rejected" "Connection rejected"))
     (close-connection! transport-state connection-id)
     (ws.core/unregister-session! hub connection-id)
     true))
@@ -106,12 +109,12 @@
       (send-text! transport-state (:session-id session)
                   (ws.codec/error-message "subscription_rejected" "Subscription rejected")))))
 
-(defn- handle-subscribe! [hub ws-registry transport-state logger session-id topic]
+(defn- handle-subscribe! [hub transport-state logger session-id topic]
   (let [session (ws.core/get-session hub session-id)
         result (ws.flow/process-subscribe! {:hub hub
-                                            :registry ws-registry
                                             :session-id session-id
                                             :topic topic
+                                            :authorize-subscribe authorize-subscribe
                                             :max-subscriptions max-subscriptions-per-session})]
     (if (:ok? result)
       (do
@@ -121,7 +124,8 @@
                        :user-id (:user-id session)
                        :topic topic
                        :correlation-id (:correlation-id session)})
-        (send-text! transport-state session-id (ws.codec/subscribed (ws.protocol/internal-topic->wire topic)))
+        (send-text! transport-state session-id
+                    (ws.codec/subscribed (ws.protocol/internal-topic->wire topic)))
         ::ok)
       ::rejected)))
 
@@ -140,7 +144,7 @@
       (send-text! transport-state session-id
                   (ws.codec/unsubscribed (ws.protocol/internal-topic->wire topic))))))
 
-(defn- on-message! [hub ws-registry transport-state guard-instance logger session-id raw-message]
+(defn- on-message! [hub transport-state guard-instance logger session-id raw-message]
   (let [session (ws.core/get-session hub session-id)]
     (cond
       (nil? session)
@@ -162,7 +166,7 @@
             (send-text! transport-state session-id (ws.codec/pong)))
 
           :subscribe
-          (when (= ::rejected (handle-subscribe! hub ws-registry transport-state logger session-id (:topic message)))
+          (when (= ::rejected (handle-subscribe! hub transport-state logger session-id (:topic message)))
             (handle-forbidden-subscribe! hub transport-state guard-instance logger session))
 
           :unsubscribe
@@ -170,9 +174,37 @@
 
           (handle-invalid-message! hub transport-state guard-instance logger session))))))
 
+(defn- booking-created->message [envelope]
+  (let [{:keys [booking-id slot-id user-id]} (:payload envelope)]
+    {:topic [:user user-id]
+     :message {:type "event"
+               :event "booking/created"
+               :topic ["user" user-id]
+               :payload {:bookingId booking-id
+                         :userId user-id
+                         :slotId slot-id}
+               :correlationId (:correlation-id envelope)}}))
+
+(defn- install-booking-push! [hub transport-state event-bus logger]
+  (bus/subscribe event-bus
+                 :booking/created
+                 (fn [_ envelope]
+                   (let [{:keys [topic message]} (booking-created->message envelope)
+                         results (ws.core/send-to-topic! hub
+                                                         (:transport transport-state)
+                                                         topic
+                                                         (ws.codec/encode message))]
+                     (doseq [{:keys [session-id]} results]
+                       (logger :info {:component ::websocket
+                                      :event :ws/message-sent
+                                      :session-id session-id
+                                      :topic topic
+                                      :correlation-id (:correlation-id envelope)}))))
+                 {:meta ::booking-created-ws-push}))
+
 (defn- ws-demo-page [initial-user-id]
   (str "<!doctype html>\n"
-       "<html lang=\"ru\">\n"
+       "<html lang=\"en\">\n"
        "<head>\n"
        "<meta charset=\"utf-8\">\n"
        "<title>booking-full ws demo</title>\n"
@@ -180,8 +212,8 @@
        "</head>\n"
        "<body>\n"
        "<h1>booking-full ws demo</h1>\n"
-       "<p>HTTP-сценарии по-прежнему проверяются из адресной строки. Эта страница нужна только для ручной проверки веб-сокета.</p>\n"
-       "<label for=\"user-id\">Пользователь:</label>\n"
+       "<p>HTTP scenarios are still checked from the address bar. This page is only for manual websocket transport verification.</p>\n"
+       "<label for=\"user-id\">User:</label>\n"
        "<select id=\"user-id\">\n"
        "<option value=\"u-alice\"" (if (= initial-user-id "u-alice") " selected" "") ">u-alice</option>\n"
        "<option value=\"u-admin\"" (if (= initial-user-id "u-admin") " selected" "") ">u-admin</option>\n"
@@ -230,7 +262,7 @@
     (when (and (map? user) (not= :invalid-arg (:code user)))
       user)))
 
-(defn- handle-ws [hub transport-state ws-registry get-user-by-id guard-instance logger request]
+(defn- handle-ws [hub transport-state get-user-by-id guard-instance logger request]
   (cond
     (not (websocket-request? request))
     (text-response 400 "websocket upgrade required")
@@ -264,7 +296,7 @@
                                     :remote-addr remote-addr
                                     :correlation-id correlation-id}))
           :on-text (fn [{:keys [connection-id text]}]
-                     (on-message! hub ws-registry transport-state guard-instance logger connection-id text))
+                     (on-message! hub transport-state guard-instance logger connection-id text))
           :on-close (fn [{:keys [connection-id status]}]
                       (ws.core/unregister-session! hub connection-id)
                       (logger :info {:component ::websocket
@@ -276,10 +308,11 @@
                                      :correlation-id correlation-id}))}))
       (text-response 401 "websocket auth required"))))
 
-(defn install-websocket-routes! [router read-provider-registry guard-instance logger hub transport-state ws-registry]
+(defn install-websocket-routes! [router read-provider-registry event-bus guard-instance logger hub transport-state]
   (let [get-user-by-id (rpr/require-provider read-provider-registry :accounts/get-user-by-id)]
+    (install-booking-push! hub transport-state event-bus logger)
     (router/add-route! router :get "/ws-demo" handle-ws-demo {:name ::ws-demo})
     (router/add-route! router
                        :get "/ws"
-                       (partial handle-ws hub transport-state ws-registry get-user-by-id guard-instance logger)
+                       (partial handle-ws hub transport-state get-user-by-id guard-instance logger)
                        {:name ::ws})))
