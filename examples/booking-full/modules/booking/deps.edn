@@ -1,5 +1,4 @@
-{:mvn/local-repo ".m2-local"
- :mvn/repos {"central" {:url "https://repo1.maven.org/maven2/"}
+{:mvn/repos {"central" {:url "https://repo1.maven.org/maven2/"}
              "clojars" {:url "https://repo.clojars.org/"}}
  :paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.11.1"}
@@ -17,8 +16,4 @@
                                         :git/sha "10df646d542adfa25d52e73c1d61b3cdc7178c48"}}
  :aliases {:test {:extra-paths ["test"]
                   :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}}
-                  :main-opts ["-m" "kaocha.runner"]}
-           :lint {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2026.01.19"}}
-                  :main-opts ["-m" "clj-kondo.main" "--cache-dir" ".clj-kondo-cache" "--lint" "src" "test"]}
-           :format {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.15.6"}}
-                    :main-opts ["-m" "cljfmt.main" "fix" "src" "test"]}}}
+                  :main-opts ["-m" "kaocha.runner"]}}}
