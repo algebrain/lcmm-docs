@@ -1,4 +1,4 @@
-(ns booking-full.tools.test-runner
+(ns lcmm-docs.tools.test-runner
   (:require [babashka.process :as p]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
