@@ -1,5 +1,4 @@
-{:mvn/local-repo ".m2-local"
- :mvn/repos {"central" {:url "https://repo1.maven.org/maven2/"}
+{:mvn/repos {"central" {:url "https://repo1.maven.org/maven2/"}
              "clojars" {:url "https://repo.clojars.org/"}}
  :paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.11.1"}
@@ -18,7 +17,8 @@
                                          :git/sha "c4d3a709b4224b0b142bba10691603ae71fe0746"}
         com.github.algebrain/lcmm-http {:git/url "https://github.com/algebrain/lcmm-http"
                                         :git/sha "10df646d542adfa25d52e73c1d61b3cdc7178c48"}
-        lcmm-ws/local {:local/root "../../.."}
+        com.github.algebrain/lcmm-ws {:git/url "https://github.com/algebrain/lcmm-ws"
+                                      :git/sha "bfe23399449701795294d0f31f5592ef59797019"}
         accounts/module {:local/root "../modules/accounts"}
         catalog/module {:local/root "../modules/catalog"}
         booking/module {:local/root "../modules/booking"}
@@ -29,6 +29,6 @@
                   :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}}
                   :main-opts ["-m" "kaocha.runner"]}
            :lint {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2026.01.19"}}
-                  :main-opts ["-m" "clj-kondo.main" "--cache-dir" ".clj-kondo-cache" "--lint" "src/booking_full" "test/booking_full"]}
+                  :main-opts ["-m" "clj-kondo.main" "--lint" "src/booking_full" "test/booking_full"]}
            :format {:extra-deps {dev.weavejester/cljfmt {:mvn/version "0.15.6"}}
                     :main-opts ["-m" "cljfmt.main" "fix" "src/booking_full" "test/booking_full"]}}}

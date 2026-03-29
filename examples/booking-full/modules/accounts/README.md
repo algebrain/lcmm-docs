@@ -30,3 +30,6 @@ Module for user and role data.
 ```bash
 bb test.bb
 ```
+
+`bb test.bb` runs `LINT`, then `TESTS`, then `FORMAT`.
+The formatting step may update files in the working tree.

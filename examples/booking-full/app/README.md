@@ -32,6 +32,10 @@ clj -M:run-main -- --continue
 bb test.bb
 ```
 
+`bb test.bb` выполняет `LINT`, затем `TESTS`, затем `FORMAT`.
+Для запуска нужны совместимые `clojure` CLI и `babashka`.
+Первый запуск может скачать зависимости для линтера, тестового раннера и форматтера.
+
 ## WebSocket demo
 
 Для ручной проверки websocket-пути приложение отдает:
