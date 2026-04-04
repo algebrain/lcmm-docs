@@ -23,6 +23,7 @@ plan-*.md
 .mem26
 .data
 .samples
+.codex
 examples/**/*.db
 examples/**/*.db-*
 

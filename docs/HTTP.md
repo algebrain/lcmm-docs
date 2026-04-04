@@ -298,7 +298,8 @@ Reason codes:
 2. используйте `Retry-After` для backoff на `429/503`, если header присутствует;
 3. для браузера откройте `x-correlation-id`/`x-request-id` через `Access-Control-Expose-Headers`;
 4. `details` для validation ошибок должны обрабатываться как machine-readable contract.
-5. подробные практические примеры для фронтенда: [HTTP_FRONTEND_NOTES](./HTTP_FRONTEND_NOTES.md)
+5. подробные практические материалы для фронтенда:
+   [frontend_notes/INDEX](./frontend_notes/INDEX.md)
 
 ## 10. Security Boundary (vs `lcmm-guard`)
 

@@ -39,7 +39,7 @@
 22. [GUARD](./GUARD.md)
 23. [GUARD_API](./GUARD_API.md)
 24. [GUARD_BACKEND](./GUARD_BACKEND.md)
-25. [HTTP_FRONTEND_NOTES](./HTTP_FRONTEND_NOTES.md)
+25. [frontend_notes/INDEX](./frontend_notes/INDEX.md)
 26. [HYDRATION](./HYDRATION.md)
 27. [SAGA](./SAGA.md)
 28. [TRANSACT](./TRANSACT.md)
@@ -146,7 +146,7 @@
 9. [GUARD_API](./GUARD_API.md)
 10. [GUARD_BACKEND](./GUARD_BACKEND.md)
 11. [HTTP](./HTTP.md)
-12. [HTTP_FRONTEND_NOTES](./HTTP_FRONTEND_NOTES.md)
+12. [frontend_notes/INDEX](./frontend_notes/INDEX.md)
 13. [HYDRATION](./HYDRATION.md)
 14. [LOGGING](./LOGGING.md)
 15. [MODULE](./MODULE.md)
@@ -169,3 +169,14 @@
 1. Если вы не знаете, с чего начать, идите по базовому порядку из раздела 1.
 2. Если у вас уже есть конкретная задача, берите тематический маршрут из раздела 2.
 3. Если нужно проверить, не забыт ли какой-то документ, смотрите полный список из раздела 3.
+
+## 5. Маршрут для frontend-инженера
+
+Если вас интересуют инварианты взаимодействия фронтенда с LCMM-бекендом,
+читайте так:
+
+1. [frontend_notes/INDEX](./frontend_notes/INDEX.md)
+2. [HTTP](./HTTP.md)
+3. [WEBSOCKET](./WEBSOCKET.md)
+4. [TRACE_FLOW](./TRACE_FLOW.md)
+5. [SECURITY](./SECURITY.md)
