@@ -24,14 +24,21 @@
 
 Если нужен быстрый общий маршрут, читайте так:
 
-1. [CONTRACT_INVARIANTS](./CONTRACT_INVARIANTS.md)
-2. [HTTP_AND_ERRORS](./HTTP_AND_ERRORS.md)
-3. [TRACING_AND_DEBUGGING](./TRACING_AND_DEBUGGING.md)
-4. [REALTIME_AND_SYNC](./REALTIME_AND_SYNC.md)
-5. [SECURITY_AND_AUTH](./SECURITY_AND_AUTH.md)
-6. [UI_PATTERNS](./UI_PATTERNS.md)
+1. [QUICKSTART_FOR_FRONTEND](./QUICKSTART_FOR_FRONTEND.md)
+2. [CONTRACT_INVARIANTS](./CONTRACT_INVARIANTS.md)
+3. [HTTP_AND_ERRORS](./HTTP_AND_ERRORS.md)
+4. [TRACING_AND_DEBUGGING](./TRACING_AND_DEBUGGING.md)
+5. [REALTIME_AND_SYNC](./REALTIME_AND_SYNC.md)
+6. [SECURITY_AND_AUTH](./SECURITY_AND_AUTH.md)
+7. [UI_PATTERNS](./UI_PATTERNS.md)
 
 ## Documents
+
+### [QUICKSTART_FOR_FRONTEND](./QUICKSTART_FOR_FRONTEND.md)
+
+Короткая рабочая памятка для frontend-интеграции: что backend действительно
+гарантирует, чего не стоит ожидать и с какой минимальной клиентской модели
+можно начать.
 
 ### [CONTRACT_INVARIANTS](./CONTRACT_INVARIANTS.md)
 
