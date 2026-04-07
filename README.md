@@ -14,6 +14,19 @@ What is here:
 - documentation drafts in `docs/`;
 - supporting material for runnable examples in the repository.
 
+## Support Libraries
+
+Related LCMM support libraries live in separate repositories under `github.com/algebrain`:
+
+- [`lcmm-configure`](https://github.com/algebrain/lcmm-configure): deterministic module configuration from TOML and environment variables.
+- [`lcmm-event-bus`](https://github.com/algebrain/lcmm-event-bus): in-process event bus for loosely coupled module communication.
+- [`lcmm-guard`](https://github.com/algebrain/lcmm-guard): focused security policy layer for small and medium HTTP APIs.
+- [`lcmm-http`](https://github.com/algebrain/lcmm-http): consistent HTTP primitives like error contract, correlation, and health/readiness handlers.
+- [`lcmm-observe`](https://github.com/algebrain/lcmm-observe): observability utilities for metrics and integration-level monitoring.
+- [`lcmm-registry`](https://github.com/algebrain/lcmm-registry): read-provider registry for contract-based synchronous cross-module reads.
+- [`lcmm-router`](https://github.com/algebrain/lcmm-router): shared router assembly for module-registered HTTP routes.
+- [`lcmm-ws`](https://github.com/algebrain/lcmm-ws): practical websocket support for sessions, subscriptions, and module exports.
+
 ## Examples
 
 This repository contains two runnable LCMM examples in `examples/`:

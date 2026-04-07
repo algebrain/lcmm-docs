@@ -48,3 +48,18 @@
   - Легко отследить всю цепочку вызовов, приведшую к ошибке.
   - Автоматически предотвращать циклы событий на уровне пары `(Module, MessageType)`.
 - **Прозрачность:** Каждое событие может быть залогировано, что дает полную картину происходящего в системе.
+
+## Библиотеки поддержки LCMM
+
+Практическая реализация LCMM обычно опирается на отдельные support libraries:
+
+- [`lcmm-event-bus`](https://github.com/algebrain/lcmm-event-bus): асинхронная межмодульная коммуникация через события.
+- [`lcmm-registry`](https://github.com/algebrain/lcmm-registry): contract-based sync read через `read-provider registry`.
+- [`lcmm-router`](https://github.com/algebrain/lcmm-router): общий router, в который модули регистрируют свои HTTP routes.
+- [`lcmm-http`](https://github.com/algebrain/lcmm-http): error contract, correlation/request IDs, `health` и `ready` handlers.
+- [`lcmm-observe`](https://github.com/algebrain/lcmm-observe): observability и app-level monitoring primitives.
+- [`lcmm-guard`](https://github.com/algebrain/lcmm-guard): прикладной security/policy слой для HTTP API.
+- [`lcmm-configure`](https://github.com/algebrain/lcmm-configure): детерминированная конфигурация модулей и приложения.
+- [`lcmm-ws`](https://github.com/algebrain/lcmm-ws): websocket support для LCMM-приложений, где он действительно нужен.
+
+Это не означает, что каждое приложение обязано использовать весь набор сразу. Composition root подключает только те части, которые реально нужны системе.
