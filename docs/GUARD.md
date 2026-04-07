@@ -633,7 +633,7 @@
 ## 17. Что читать дальше
 
 1. Архитектурный контекст: [ARCH](./ARCH.md)
-2. Общий security baseline: [SECURITY](./SECURITY.md)
+2. Общий security baseline: [SECURITY](./SECURITY_GUIDANCE.md)
 3. App-level меры: [SECURE_APP](./SECURE_APP.md)
 4. Module-level меры: [SECURE_MODULE](./SECURE_MODULE.md)
 

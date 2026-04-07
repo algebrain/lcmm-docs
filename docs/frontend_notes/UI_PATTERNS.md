@@ -205,5 +205,5 @@
 
 1. `../HTTP.md`
 2. `../WEBSOCKET.md`
-3. `../SECURITY.md`
+3. `../SECURITY_GUIDANCE.md`
 4. `../TRACE_FLOW.md`

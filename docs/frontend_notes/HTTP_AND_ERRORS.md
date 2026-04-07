@@ -313,6 +313,6 @@ api.interceptors.response.use(
 ## Основные документы-источники
 
 1. `../HTTP.md`
-2. `../SECURITY.md`
+2. `../SECURITY_GUIDANCE.md`
 3. `../SECURE_APP.md`
 4. `../GUARD.md`

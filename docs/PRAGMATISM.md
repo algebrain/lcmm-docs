@@ -50,7 +50,7 @@
 2. `MODULE.md`: собрать модуль по единым правилам структуры и зависимостей.
 3. `CONFIGURE.md` и `CONFIGURE_ADMIN.md`: настроить предсказуемый запуск и конфигурацию.
 4. `ROUTER.md`: поднять базовый HTTP-слой маршрутов.
-5. `SECURITY.md`: подключить app-level сессионный auth middleware, redaction и безопасные error-response.
+5. `SECURITY_GUIDANCE.md`: подключить app-level сессионный auth middleware, redaction и безопасные error-response.
 6. `CONTRACT.md`: описать контракты модулей, чтобы границы были явны человеку и ИИ-агенту.
 7. `DATABASE.md`: работать с БД через цикл `backup -> migratus migrate -> migratus status -> start api`.
 8. `LOGGING.md`: включить структурированные логи, достаточные для диагностики инцидентов.
@@ -142,7 +142,7 @@
 9. [LOGGING](./LOGGING.md)  
 Правила логирования и диагностики. Помогает принимать решения по фактам, а не по догадкам.
 
-10. [SECURITY](./SECURITY.md)  
+10. [SECURITY](./SECURITY_GUIDANCE.md)  
 Минимальный security baseline для простого API без корпоративной перегрузки.
 
 11. [SAGA](./SAGA.md)  

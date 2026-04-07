@@ -194,7 +194,7 @@ LCMM рекомендует app-level сессионный подход.
 
 ## Основные документы-источники
 
-1. `../SECURITY.md`
+1. `../SECURITY_GUIDANCE.md`
 2. `../SECURE_APP.md`
 3. `../GUARD.md`
 4. `../WEBSOCKET.md`
